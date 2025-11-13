@@ -1,368 +1,258 @@
 --[[ 
-AUTO FARM & AIMBOT HUB — BEAUTIFUL FULLSCREEN / JL HUB STYLE / IMMEDIATE TOGGLE
-- Tela cheia, fundo árvore dark com vidro/blur, efeitos.
-- Ao clicar, cada função ativa NA HORA (e para ao desligar, botões verde).
-- Sem múltiplos loops no mesmo botão!
-- Compatível KRNL, Delta, Fluxus
+JL Hub - Menu ROBLOX exploit (GUI COMUM) - Fundo árvore, nome "JL Hub", painel fixo no canto, simples, bonito, toggle.
+Funcionando: KRNL, Delta, Fluxus.
 ]]
 
 local Players      = game:GetService("Players")
 local LocalPlayer  = Players.LocalPlayer
 local Mouse        = LocalPlayer:GetMouse()
 local CoreGui      = game:GetService("CoreGui")
-local Run          = game:GetService("RunService")
-local Workspace    = game:GetService("Workspace")
-local TweenService = game:GetService("TweenService")
 
-if CoreGui:FindFirstChild("AFArbMenuGui") then
-    CoreGui:FindFirstChild("AFArbMenuGui"):Destroy()
-end
+if CoreGui:FindFirstChild("JLHubMain") then CoreGui.JLHubMain:Destroy() end
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "AFArbMenuGui"
+ScreenGui.Name = "JLHubMain"
 ScreenGui.Parent = CoreGui
-ScreenGui.IgnoreGuiInset = true
 ScreenGui.ResetOnSpawn = false
 
--- Fundo dark tree (pode trocar assetId se quiser)
+-- Fundo imagem árvore (ajuste assetId abaixo para sua preferida)
 local bgId = "rbxassetid://14924794312"
 local bg = Instance.new("ImageLabel")
+bg.Name = "TreeBG"
 bg.Parent = ScreenGui
-bg.Size = UDim2.new(1, 0, 1, 0)
+bg.Position = UDim2.new(0,0,0,0)
+bg.Size = UDim2.new(1,0,1,0)
 bg.Image = bgId
-bg.ImageTransparency = 0.12
-bg.ScaleType = Enum.ScaleType.Crop
+bg.ImageTransparency = 0.78
 bg.BackgroundTransparency = 1
-bg.ZIndex = 1
 
--- Blur
-pcall(function()
-    local blur = Instance.new("BlurEffect")
-    blur.Name = "PrettyBlur"
-    blur.Size = 15
-    blur.Parent = game:GetService("Lighting")
-end)
-
-local glass = Instance.new("Frame")
-glass.Parent = ScreenGui
-glass.Size = UDim2.new(1,0,1,0)
-glass.BackgroundColor3 = Color3.fromRGB(17,17,23)
-glass.BackgroundTransparency = 0.28
-glass.ZIndex = 2
-
--- Menu principal
+-- Menu lateral simples JL Hub
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 470, 0, 590)
-MainFrame.Position = UDim2.new(0.5, -235, 0.5, -295)
-MainFrame.BackgroundColor3 = Color3.fromRGB(19, 23, 26)
-MainFrame.BackgroundTransparency = 0.12
+MainFrame.Size = UDim2.new(0, 265, 0, 375)
+MainFrame.Position = UDim2.new(0, 18, 0.22,0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 25)
+MainFrame.BackgroundTransparency = 0.09
 MainFrame.BorderSizePixel = 0
 MainFrame.Parent = ScreenGui
-MainFrame.ZIndex = 10
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 18)
+local round = Instance.new("UICorner", MainFrame)
+round.CornerRadius = UDim.new(0,17)
 
 local MenuTitle = Instance.new("TextLabel")
-MenuTitle.Text = "🌲 AUTO FARM & AIMBOT HUB"
-MenuTitle.Font = Enum.Font.GothamBlack
-MenuTitle.TextColor3 = Color3.fromRGB(223,255,209)
+MenuTitle.Text = "🌳 JL Hub"
+MenuTitle.Font = Enum.Font.GothamBold
+MenuTitle.TextColor3 = Color3.fromRGB(87,199,140)
 MenuTitle.BackgroundTransparency = 1
-MenuTitle.Size = UDim2.new(1,0,0,50)
-MenuTitle.Position = UDim2.new(0,0,0,-4)
-MenuTitle.TextSize = 36
-MenuTitle.TextStrokeTransparency = 0.54
-MenuTitle.TextXAlignment = Enum.TextXAlignment.Center
+MenuTitle.Size = UDim2.new(1, 0, 0, 44)
+MenuTitle.Position = UDim2.new(0,0,0,0)
+MenuTitle.TextSize = 29
 MenuTitle.Parent = MainFrame
-MenuTitle.ZIndex = 11
+MenuTitle.TextStrokeTransparency = 0.43
 
-local function NovoSeparador(y)
-    local box = Instance.new("Frame", MainFrame)
-    box.Size = UDim2.new(1, -50, 0, 2)
-    box.Position = UDim2.new(0, 25, 0, y)
-    box.BorderSizePixel = 0
-    box.BackgroundColor3 = Color3.fromRGB(59,99,58)
-    box.BackgroundTransparency = 0.42
-    box.ZIndex = 11
-    return box
-end
-NovoSeparador(53)
-
--- Tabs bonitas
-local Tabs = {"Menu","Aimbot","Configuração"}
-local TabButtons, ContentFrames = {}, {}
-local currentTab = "Menu"
-local function createTabButton(name, i)
+-- Funções toggles
+local state = {}; local btns={};
+local function makeButton(txt, ypos, color, fun)
     local btn = Instance.new("TextButton")
-    btn.Size, btn.Position = UDim2.new(0, 120, 0, 36), UDim2.new(0,25 + 135*(i-1),0,63)
-    btn.Text = name
-    btn.Font = Enum.Font.GothamBold
-    btn.BackgroundColor3 = Color3.fromRGB(44, 56, 62)
-    btn.TextColor3 = Color3.fromRGB(212,245,160)
-    btn.BorderSizePixel = 0
-    btn.ZIndex = 12
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,11)
-    btn.Parent = MainFrame
-    table.insert(TabButtons,btn)
-    btn.MouseEnter:Connect(function()
-        TweenService:Create(btn,TweenInfo.new(.13),{BackgroundColor3=Color3.fromRGB(63, 92, 71)}):Play()
-    end)
-    btn.MouseLeave:Connect(function()
-        if currentTab ~= name then
-            TweenService:Create(btn,TweenInfo.new(.13),{BackgroundColor3=Color3.fromRGB(44,56,62)}):Play()
-        end
-    end)
-    btn.MouseButton1Click:Connect(function()
-        for _,cf in pairs(ContentFrames) do cf.Visible = false end
-        ContentFrames[i].Visible = true
-        currentTab = name
-        for idx,b in pairs(TabButtons) do
-            TweenService:Create(b,TweenInfo.new(.21),{
-                BackgroundColor3 = idx == i and Color3.fromRGB(45,110,60) or Color3.fromRGB(44,56,62)
-            }):Play()
-        end
-    end)
-    if i == 1 then btn.BackgroundColor3 = Color3.fromRGB(45,110,60) end
-end
-
-local function createContentFrame(i)
-    local cf = Instance.new("Frame")
-    cf.Size = UDim2.new(1,-34,1,-112)
-    cf.Position = UDim2.new(0,17,0,108)
-    cf.BackgroundTransparency = 1
-    cf.Parent = MainFrame
-    cf.Visible = (i==1)
-    cf.ZIndex = 13
-    ContentFrames[#ContentFrames+1]=cf
-end
-for i,tab in ipairs(Tabs) do
-    createTabButton(tab,i)
-    createContentFrame(i)
-end
-
--- Utils
-local function notify(msg)
-    pcall(function()
-        local Bind = Instance.new("BindableFunction")
-        game.StarterGui:SetCore("SendNotification", {
-            Title = "AFArb Menu";
-            Text = msg;
-            Duration=2.4
-        })
-        Bind.OnInvoke = function() end
-    end)
-end
-local function IsAlive(chr)
-    return chr and chr:FindFirstChild("Humanoid") and chr.Humanoid.Health > 0
-end
-local function getAllBosses()
-    local bosses = {}
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj.Name:lower():find("boss") then
-            table.insert(bosses, obj)
-        end
-    end
-    return bosses
-end
-
-local function makeButton(txt, ypos, color, parent, callback)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, -24, 0, 46)
-    btn.Position = UDim2.new(0, 12, 0, ypos)
+    btn.Size = UDim2.new(1,-26,0,38)
+    btn.Position = UDim2.new(0,13,0,45+ypos)
     btn.Text = txt
-    btn.BackgroundColor3 = color or Color3.fromRGB(41,44,61)
-    btn.TextColor3 = Color3.fromRGB(236, 252, 216)
-    btn.Font = Enum.Font.GothamSemibold
-    btn.TextSize = 21
+    btn.BackgroundColor3 = color
+    btn.TextColor3 = Color3.fromRGB(204,255,215)
+    btn.Font = Enum.Font.GothamMedium
+    btn.TextSize = 20
     btn.BorderSizePixel = 0
-    btn.ZIndex = 14
-    btn.AutoButtonColor = false
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
-    if callback then btn.MouseButton1Click:Connect(callback) end
+    btn.AutoButtonColor = true
+    btn.Parent = MainFrame
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,10)
+    btn.MouseButton1Click:Connect(function()
+        fun(btn)
+    end)
     return btn
 end
 
------------------ JL HUB TOGGLES & task.spawn CONTROL SO ATIVA 1 LOOP POR FUNÇAO -----------------
-local loopThreads = {}
-local autoFarmLoop      = false
-local autoFarmBossLoop  = false
-local autoPegarLoop     = false
-local autoClickEnabled  = false
-local espEnabled        = false
-local aimbotEnabled     = false
-
-local function stopLoop(name, btn, normalColor)
-    if loopThreads[name] and coroutine.status(loopThreads[name])~="dead" then
-        coroutine.close(loopThreads[name])
-        loopThreads[name]=nil
-    end
-    btn.BackgroundColor3 = normalColor
-end
-local function runLoop(name, btn, activeColor, normalColor, func)
-    if loopThreads[name] and coroutine.status(loopThreads[name])~="dead" then
-        -- Já está rodando
-        return
-    end
-    coroutine.resume(coroutine.create(function()
-        btn.BackgroundColor3 = activeColor
-        loopThreads[name] = coroutine.running()
-        func()
-    end))
+local function notify(msg)
+    pcall(function() game.StarterGui:SetCore("SendNotification", {
+        Title = "JL Hub", Text = msg, Duration=2
+    }) end)
 end
 
-local ypad=6
-local colorFarm   = Color3.fromRGB(60,149,210)
-local colorBoss   = Color3.fromRGB(255,138,20)
-local colorPegar  = Color3.fromRGB(102,190,245)
-local colorClick  = Color3.fromRGB(92,45,140)
-
-local btns={}
-
-btns.farm = makeButton("🌾 Auto Farm", ypad, colorFarm, ContentFrames[1], function()
-    autoFarmLoop = not autoFarmLoop
-    if autoFarmLoop then
-        runLoop("farm", btns.farm, Color3.fromRGB(22,184,87), colorFarm, function()
-            while autoFarmLoop do
-                local char = LocalPlayer.Character
-                if char and char:FindFirstChild("HumanoidRootPart") then
-                    for _,obj in ipairs(Workspace:GetDescendants()) do
+-- Farm toggle
+state.farm = false
+btns.farm = makeButton("🌾 Auto Farm", 10, Color3.fromRGB(84,156,239), function(btn)
+    state.farm = not state.farm
+    btn.BackgroundColor3 = state.farm and Color3.fromRGB(18,180,80) or Color3.fromRGB(84,156,239)
+    if state.farm then
+        notify("Auto Farm ON")
+        if not state.farmLoop or coroutine.status(state.farmLoop)=="dead" then
+            state.farmLoop = coroutine.create(function()
+                while state.farm do
+                    for _,obj in ipairs(workspace:GetDescendants()) do
                         if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("ManualMission") then
                             local root = obj.PrimaryPart or obj:FindFirstChild("HumanoidRootPart")
-                            if root and (root.Position-char.HumanoidRootPart.Position).Magnitude<55 and obj.Humanoid.Health > 0 then
-                                obj.Humanoid.Health = 0
+                            if root and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                                if (root.Position-LocalPlayer.Character.HumanoidRootPart.Position).Magnitude<65
+                                    and obj.Humanoid.Health>0 then obj.Humanoid.Health=0 end
                             end
                         end
                     end
+                    wait(0.17)
                 end
-                task.wait(0.18)
-            end
-            stopLoop("farm", btns.farm, colorFarm)
-        end)
-        notify("Auto Farm Ativado!")
+            end)
+            coroutine.resume(state.farmLoop)
+        end
     else
-        stopLoop("farm", btns.farm, colorFarm)
-        notify("Auto Farm Desativado!")
-    end
-end)
-btns.boss = makeButton("👑 Auto Farm Boss", ypad+56, colorBoss, ContentFrames[1], function()
-    autoFarmBossLoop = not autoFarmBossLoop
-    if autoFarmBossLoop then
-        runLoop("boss", btns.boss, Color3.fromRGB(232,184,47), colorBoss, function()
-            while autoFarmBossLoop do
-                for _,boss in ipairs(getAllBosses()) do
-                    if boss and boss:FindFirstChild("Humanoid") and boss.Humanoid.Health > 0 then
-                        boss.Humanoid.Health = 0
-                    end
-                end
-                task.wait(0.26)
-            end
-            stopLoop("boss", btns.boss, colorBoss)
-        end)
-        notify("Auto Farm Boss Ativado!")
-    else
-        stopLoop("boss", btns.boss, colorBoss)
-        notify("Auto Farm Boss Desativado!")
-    end
-end)
-btns.pegar = makeButton("🌟 Auto Pegar Itens", ypad+56*2, colorPegar, ContentFrames[1], function()
-    autoPegarLoop = not autoPegarLoop
-    if autoPegarLoop then
-        runLoop("pegar", btns.pegar, Color3.fromRGB(84,255,230), colorPegar, function()
-            while autoPegarLoop do
-                local char = LocalPlayer.Character
-                if char and char:FindFirstChild("HumanoidRootPart") then
-                    for _, obj in ipairs(Workspace:GetDescendants()) do
-                        if obj:IsA("BasePart") and obj.CanCollide and (obj.Position-char.HumanoidRootPart.Position).Magnitude<18 then
-                            firetouchinterest(char.HumanoidRootPart, obj, 0)
-                            task.wait()
-                            firetouchinterest(char.HumanoidRootPart, obj, 1)
-                        end
-                    end
-                end
-                task.wait(0.17)
-            end
-            stopLoop("pegar", btns.pegar, colorPegar)
-        end)
-        notify("Auto Pegar Ativado!")
-    else
-        stopLoop("pegar", btns.pegar, colorPegar)
-        notify("Auto Pegar Desativado!")
-    end
-end)
-btns.click = makeButton("⚡ Auto Click", ypad+56*3, colorClick, ContentFrames[1], function()
-    autoClickEnabled = not autoClickEnabled
-    if autoClickEnabled then
-        runLoop("click", btns.click, Color3.fromRGB(110,38,197), colorClick, function()
-            while autoClickEnabled do
-                local char = LocalPlayer.Character
-                if char and char:FindFirstChildWhichIsA("Tool") then
-                    for _,ev in pairs(getconnections(Mouse.Button1Down)) do
-                        ev:Fire()
-                    end
-                end
-                task.wait(0.07)
-            end
-            stopLoop("click", btns.click, colorClick)
-        end)
-        notify("Auto Click Ativado!")
-    else
-        stopLoop("click", btns.click, colorClick)
-        notify("Auto Click Desativado!")
+        notify("Auto Farm OFF")
     end
 end)
 
--- AIMBOT TAB REALTIME
-btns.aim = makeButton("🎯 Aimbot", ypad, Color3.fromRGB(248,75,66), ContentFrames[2], function()
-    aimbotEnabled = not aimbotEnabled
-    if aimbotEnabled then
-        runLoop("aim", btns.aim, Color3.fromRGB(71,255,122), Color3.fromRGB(248,75,66), function()
-            while aimbotEnabled do
-                local target
-                for _,plr in ipairs(Players:GetPlayers()) do
-                    if plr~=LocalPlayer and plr.Character and IsAlive(plr.Character) and plr.Character:FindFirstChild("Head") then
-                        local dist = (plr.Character.Head.Position-LocalPlayer.Character.Head.Position).Magnitude
-                        if not target or dist < target[2] then target = {plr, dist} end
+-- Boss toggle
+state.boss = false
+btns.boss = makeButton("👑 Auto Boss", 65, Color3.fromRGB(255,162,62), function(btn)
+    state.boss = not state.boss
+    btn.BackgroundColor3 = state.boss and Color3.fromRGB(232,184,47) or Color3.fromRGB(255,162,62)
+    if state.boss then
+        notify("Auto Boss ON")
+        if not state.bossLoop or coroutine.status(state.bossLoop)=="dead" then
+            state.bossLoop = coroutine.create(function()
+                while state.boss do
+                    for _,obj in ipairs(workspace:GetDescendants()) do
+                        if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj.Name:lower():find("boss") then
+                            if obj.Humanoid.Health>0 then obj.Humanoid.Health=0 end
+                        end
                     end
+                    wait(0.23)
                 end
-                if target and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head") then
-                    local cam = Workspace.CurrentCamera 
-                    cam.CFrame = CFrame.new(cam.CFrame.Position, target[1].Character.Head.Position)
-                end
-                task.wait(0.07)
-            end
-            stopLoop("aim", btns.aim, Color3.fromRGB(248,75,66))
-        end)
-        notify("Aimbot Ativado!")
+            end)
+            coroutine.resume(state.bossLoop)
+        end
     else
-        stopLoop("aim", btns.aim, Color3.fromRGB(248,75,66))
-        notify("Aimbot Desativado!")
+        notify("Auto Boss OFF")
     end
 end)
-btns.esp = makeButton("🔴 ESP Vermelho", ypad+58, Color3.fromRGB(190, 17, 30), ContentFrames[2], function()
-    espEnabled = not espEnabled
-    if espEnabled then
-        btns.esp.BackgroundColor3 = Color3.fromRGB(167,40,22)
-        -- ESP effect
-        for _,part in pairs(loopThreads["espparts"] or {}) do if part and part.Parent then part:Destroy() end end
-        loopThreads["espparts"] = {}
+
+-- Auto Pegar toggle
+state.pegar = false
+btns.pegar = makeButton("🌟 Auto Pegar", 120, Color3.fromRGB(102,206,254), function(btn)
+    state.pegar = not state.pegar
+    btn.BackgroundColor3 = state.pegar and Color3.fromRGB(84,255,230) or Color3.fromRGB(102,206,254)
+    if state.pegar then
+        notify("Auto Pegar ON")
+        if not state.pegarLoop or coroutine.status(state.pegarLoop)=="dead" then
+            state.pegarLoop = coroutine.create(function()
+                while state.pegar do
+                    local char=LocalPlayer.Character; if char and char:FindFirstChild("HumanoidRootPart") then
+                        for _,obj in ipairs(workspace:GetDescendants()) do
+                            if obj:IsA("BasePart") and obj.CanCollide and (obj.Position-char.HumanoidRootPart.Position).Magnitude<18 then
+                                firetouchinterest(char.HumanoidRootPart, obj, 0)
+                                wait()
+                                firetouchinterest(char.HumanoidRootPart, obj, 1)
+                            end
+                        end
+                    end
+                    wait(0.22)
+                end
+            end)
+            coroutine.resume(state.pegarLoop)
+        end
+    else
+        notify("Auto Pegar OFF")
+    end
+end)
+
+-- AutoClick toggle
+state.click = false
+btns.click = makeButton("⚡ Auto Click", 175, Color3.fromRGB(92, 45, 140), function(btn)
+    state.click = not state.click
+    btn.BackgroundColor3 = state.click and Color3.fromRGB(110,38,197) or Color3.fromRGB(92,45,140)
+    if state.click then
+        notify("Auto Click ON")
+        if not state.clickLoop or coroutine.status(state.clickLoop)=="dead" then
+            state.clickLoop = coroutine.create(function()
+                while state.click do
+                    local chr=LocalPlayer.Character
+                    if chr and chr:FindFirstChildWhichIsA("Tool") then
+                        for _,ev in pairs(getconnections(Mouse.Button1Down)) do
+                            ev:Fire()
+                        end
+                    end
+                    wait(0.08)
+                end
+            end)
+            coroutine.resume(state.clickLoop)
+        end
+    else
+        notify("Auto Click OFF")
+    end
+end)
+
+-- ESP Vermelho toggle
+state.esp = false
+btns.esp = makeButton("🔴 ESP Vermelho", 230, Color3.fromRGB(190,17,30), function(btn)
+    state.esp = not state.esp
+    btn.BackgroundColor3 = state.esp and Color3.fromRGB(167,40,22) or Color3.fromRGB(190,17,30)
+    if state.esp then
+        notify("ESP ON")
+        state.espparts = {}
         for _,plr in ipairs(Players:GetPlayers()) do
             if plr~=LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
-                local adorn = Instance.new("BoxHandleAdornment")
+                local adorn=Instance.new("BoxHandleAdornment")
                 adorn.Adornee = plr.Character.Head
                 adorn.Size = Vector3.new(1.9,1.9,1.9)
                 adorn.Color3 = Color3.new(1,0,0)
                 adorn.Transparency = 0.6
                 adorn.AlwaysOnTop = true
-                adorn.ZIndex = 99
+                adorn.ZIndex = 20
                 adorn.Parent = CoreGui
-                table.insert(loopThreads["espparts"],adorn)
+                table.insert(state.espparts,adorn)
             end
         end
-        notify("ESP Ativado!")
     else
-        btns.esp.BackgroundColor3 = Color3.fromRGB(190,17,30)
-        for _,part in pairs(loopThreads["espparts"] or {}) do if part and part.Parent then part:Destroy() end end
-        loopThreads["espparts"] = {}
-        notify("ESP Desativado!")
+        notify("ESP OFF")
+        for _,a in ipairs(state.espparts or {}) do if a and a.Parent then a:Destroy() end end
+        state.espparts={}
     end
 end)
 
-notify("GUI FULLSCREEN ativada! Funções agora ligam NA HORA. Só aproveitar 😉")
+-- Aimbot toggle
+state.aim = false
+btns.aim = makeButton("🎯 Aimbot", 285, Color3.fromRGB(45,120,70), function(btn)
+    state.aim = not state.aim
+    btn.BackgroundColor3 = state.aim and Color3.fromRGB(23,180,87) or Color3.fromRGB(45,120,70)
+    if state.aim then
+        notify("Aimbot ON")
+        if not state.aimLoop or coroutine.status(state.aimLoop)=="dead" then
+            state.aimLoop = coroutine.create(function()
+                while state.aim do
+                    local minDist, target
+                    for _,plr in ipairs(Players:GetPlayers()) do
+                        if plr~=LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") and plr.Character:FindFirstChild("Humanoid") then
+                            if plr.Character.Humanoid.Health>0 and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head") then
+                                local dist = (plr.Character.Head.Position - LocalPlayer.Character.Head.Position).Magnitude
+                                if not minDist or dist < minDist then minDist, target = dist, plr end
+                            end
+                        end
+                    end
+                    if target and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head") then
+                        local cam = workspace.CurrentCamera 
+                        cam.CFrame = CFrame.new(cam.CFrame.Position, target.Character.Head.Position)
+                    end
+                    wait(0.07)
+                end
+            end)
+            coroutine.resume(state.aimLoop)
+        end
+    else
+        notify("Aimbot OFF")
+    end
+end)
+
+-- Crédtio
+local c = Instance.new("TextLabel", MainFrame)
+c.Text = "github.com/as1802422-sys | 🌳 JL Hub"
+c.Size = UDim2.new(1,0,0,15)
+c.Position = UDim2.new(0,0,1,-13)
+c.BackgroundTransparency = 1
+c.TextColor3 = Color3.fromRGB(90,120,85)
+c.TextXAlignment = Enum.TextXAlignment.Right
+c.TextYAlignment = Enum.TextYAlignment.Bottom
+c.Font = Enum.Font.Code
+c.TextSize = 13
