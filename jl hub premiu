@@ -1,258 +1,389 @@
---[[ 
-JL Hub - Menu ROBLOX exploit (GUI COMUM) - Fundo árvore, nome "JL Hub", painel fixo no canto, simples, bonito, toggle.
-Funcionando: KRNL, Delta, Fluxus.
+--[[
+JL Hub - Blox Fruits Ultimate (COMPLETO + KEY SYSTEM)
+Inclui:
+- Sistema de Key (key: jl123bc, botão com link: https://discord.gg/JT4KdfVta)
+- GUI lateral JL Hub bonito, fundo árvore
+- Auto Farm Mob (missão)
+- Auto Boss (lista extensa)
+- AutoClick (todas fruits/tool/sword)
+- ESP players vermelho
+- Aimbot player
+- Anti AFK
+- Flood Chat
+- Auto Haki (B/Obs)
+Copie, execute no exploit!
 ]]
 
-local Players      = game:GetService("Players")
-local LocalPlayer  = Players.LocalPlayer
-local Mouse        = LocalPlayer:GetMouse()
-local CoreGui      = game:GetService("CoreGui")
+-------------------------------------------------------
+-- [KEY SYSTEM]
+local KEY = "jl123bc"
+local KEYLINK = "https://discord.gg/JT4KdfVta"
+local cg = game:GetService("CoreGui")
+if cg:FindFirstChild("JLHubKey") then cg.JLHubKey:Destroy() end
+if cg:FindFirstChild("JLHubMain") then cg.JLHubMain:Destroy() end
 
-if CoreGui:FindFirstChild("JLHubMain") then CoreGui.JLHubMain:Destroy() end
+local gui = Instance.new("ScreenGui", cg)
+gui.Name = "JLHubKey"
+gui.IgnoreGuiInset = true
+local bg = Instance.new("Frame", gui)
+bg.BackgroundColor3 = Color3.fromRGB(20,21,22)
+bg.BackgroundTransparency = .05
+bg.Size = UDim2.new(0,340,0,185)
+bg.Position = UDim2.new(0.5,-170,0.5,-92)
+bg.BorderSizePixel = 0
+Instance.new("UICorner",bg).CornerRadius=UDim.new(0,16)
 
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "JLHubMain"
-ScreenGui.Parent = CoreGui
-ScreenGui.ResetOnSpawn = false
+local title = Instance.new("TextLabel",bg)
+title.Size = UDim2.new(1,0,0,40)
+title.BackgroundTransparency = 1
+title.Font = Enum.Font.GothamBold
+title.Text = "🔑 JL Hub - Key System"
+title.TextColor3 = Color3.fromRGB(40,255,180)
+title.TextSize = 23
 
--- Fundo imagem árvore (ajuste assetId abaixo para sua preferida)
-local bgId = "rbxassetid://14924794312"
-local bg = Instance.new("ImageLabel")
-bg.Name = "TreeBG"
-bg.Parent = ScreenGui
-bg.Position = UDim2.new(0,0,0,0)
-bg.Size = UDim2.new(1,0,1,0)
-bg.Image = bgId
-bg.ImageTransparency = 0.78
-bg.BackgroundTransparency = 1
+local lbl = Instance.new("TextLabel",bg)
+lbl.Size = UDim2.new(1,-16,0,30)
+lbl.Position = UDim2.new(0,8,0,44)
+lbl.BackgroundTransparency = 1
+lbl.TextColor3 = Color3.fromRGB(190,255,223)
+lbl.Font = Enum.Font.Gotham
+lbl.TextSize = 18
+lbl.Text = "Entre com a Key correta para acessar o script:"
 
--- Menu lateral simples JL Hub
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 265, 0, 375)
-MainFrame.Position = UDim2.new(0, 18, 0.22,0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 25)
-MainFrame.BackgroundTransparency = 0.09
-MainFrame.BorderSizePixel = 0
-MainFrame.Parent = ScreenGui
-local round = Instance.new("UICorner", MainFrame)
-round.CornerRadius = UDim.new(0,17)
+local input = Instance.new("TextBox",bg)
+input.Text = ""
+input.TextSize = 19
+input.Position = UDim2.new(0,18,0,82)
+input.Size = UDim2.new(1,-36,0,35)
+input.BackgroundColor3 = Color3.fromRGB(22,33,35)
+input.TextColor3 = Color3.fromRGB(220,255,220)
+input.Font = Enum.Font.GothamMedium
+input.PlaceholderText = "Digite sua Key aqui..."
+input.BorderSizePixel=0
+Instance.new("UICorner",input).CornerRadius=UDim.new(0,8)
 
-local MenuTitle = Instance.new("TextLabel")
-MenuTitle.Text = "🌳 JL Hub"
-MenuTitle.Font = Enum.Font.GothamBold
-MenuTitle.TextColor3 = Color3.fromRGB(87,199,140)
-MenuTitle.BackgroundTransparency = 1
-MenuTitle.Size = UDim2.new(1, 0, 0, 44)
-MenuTitle.Position = UDim2.new(0,0,0,0)
-MenuTitle.TextSize = 29
-MenuTitle.Parent = MainFrame
-MenuTitle.TextStrokeTransparency = 0.43
+local mensagem = Instance.new("TextLabel",bg)
+mensagem.Size = UDim2.new(1, -24, 0, 25)
+mensagem.Position = UDim2.new(0, 12, 0, 123)
+mensagem.BackgroundTransparency = 1
+mensagem.TextColor3 = Color3.new(1, 0.28, 0.3)
+mensagem.Font = Enum.Font.Gotham
+mensagem.TextSize = 15
+mensagem.Text = ""
 
--- Funções toggles
-local state = {}; local btns={};
-local function makeButton(txt, ypos, color, fun)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1,-26,0,38)
-    btn.Position = UDim2.new(0,13,0,45+ypos)
-    btn.Text = txt
-    btn.BackgroundColor3 = color
-    btn.TextColor3 = Color3.fromRGB(204,255,215)
-    btn.Font = Enum.Font.GothamMedium
-    btn.TextSize = 20
-    btn.BorderSizePixel = 0
-    btn.AutoButtonColor = true
-    btn.Parent = MainFrame
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,10)
-    btn.MouseButton1Click:Connect(function()
-        fun(btn)
-    end)
-    return btn
-end
+local function ABRIR_HUB()
+    gui:Destroy()
+
+-------------------------------------------------------
+-- [JL HUB PRINCIPAL]
+local plr = game:GetService("Players").LocalPlayer
+local mouse = plr:GetMouse()
+local cg2 = game:GetService("CoreGui")
+if cg2:FindFirstChild("JLHubMain") then cg2.JLHubMain:Destroy() end
+
+local gui2 = Instance.new("ScreenGui", cg2)
+gui2.Name = "JLHubMain"
+gui2.ResetOnSpawn = false
+
+local bg2 = Instance.new("ImageLabel", gui2)
+bg2.Image = "rbxassetid://14924794312"
+bg2.Size = UDim2.new(1,0,1,0)
+bg2.Position = UDim2.new(0,0,0,0)
+bg2.ImageTransparency = 0.8
+bg2.BackgroundTransparency = 1
+
+local frame = Instance.new("Frame", gui2)
+frame.Size = UDim2.new(0,272,0,468)
+frame.Position = UDim2.new(0,14,0.19,0)
+frame.BackgroundColor3 = Color3.fromRGB(27,30,31)
+frame.BackgroundTransparency = 0.13
+frame.BorderSizePixel = 0
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0,13)
+
+local title = Instance.new("TextLabel", frame)
+title.Size = UDim2.new(1,0,0,43)
+title.BackgroundTransparency = 1
+title.Text = "🌳 JL Hub - Blox Fruits Ultimate"
+title.Font = Enum.Font.GothamBold
+title.TextSize = 20
+title.TextColor3 = Color3.fromRGB(110,255,148)
+title.TextStrokeTransparency = 0.5
+
+local states, threads = {}, {}
 
 local function notify(msg)
-    pcall(function() game.StarterGui:SetCore("SendNotification", {
-        Title = "JL Hub", Text = msg, Duration=2
-    }) end)
+    pcall(function() game.StarterGui:SetCore("SendNotification", {Title = "JL Hub", Text = msg, Duration=2.2}) end)
 end
 
--- Farm toggle
-state.farm = false
-btns.farm = makeButton("🌾 Auto Farm", 10, Color3.fromRGB(84,156,239), function(btn)
-    state.farm = not state.farm
-    btn.BackgroundColor3 = state.farm and Color3.fromRGB(18,180,80) or Color3.fromRGB(84,156,239)
-    if state.farm then
-        notify("Auto Farm ON")
-        if not state.farmLoop or coroutine.status(state.farmLoop)=="dead" then
-            state.farmLoop = coroutine.create(function()
-                while state.farm do
-                    for _,obj in ipairs(workspace:GetDescendants()) do
-                        if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("ManualMission") then
-                            local root = obj.PrimaryPart or obj:FindFirstChild("HumanoidRootPart")
-                            if root and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                                if (root.Position-LocalPlayer.Character.HumanoidRootPart.Position).Magnitude<65
-                                    and obj.Humanoid.Health>0 then obj.Humanoid.Health=0 end
-                            end
-                        end
+local function makeBtn(txt, y, color, fun)
+    local b = Instance.new("TextButton", frame)
+    b.Text = txt
+    b.Font = Enum.Font.GothamMedium
+    b.Size = UDim2.new(1,-18,0,34)
+    b.Position = UDim2.new(0,9,0,44+y)
+    b.BackgroundColor3 = color
+    b.TextColor3 = Color3.fromRGB(217,255,209)
+    b.TextSize = 17
+    b.BorderSizePixel = 0
+    Instance.new("UICorner", b).CornerRadius=UDim.new(0,8)
+    b.MouseButton1Click:Connect(function() fun(b) end)
+    return b
+end
+
+-- Util mob da quest
+local function getQuestMob()
+    local quest = plr.PlayerGui and plr.PlayerGui:FindFirstChild("Main") and plr.PlayerGui.Main:FindFirstChild("Quest")
+    if quest and quest.Title and quest.Title.Text and #quest.Title.Text > 0 then
+        return quest.Title.Text:match("%[(.-)%]")
+    end
+    return nil
+end
+
+-- [1] Auto Farm Mob (quest)
+states.farm = false
+makeBtn("🌾 Auto Farm Mob (Quest)",0,Color3.fromRGB(84,156,239),function(btn)
+    states.farm = not states.farm
+    btn.BackgroundColor3 = states.farm and Color3.fromRGB(18,180,80) or Color3.fromRGB(84,156,239)
+    if states.farm then
+        notify("Auto Farm Mob ON")
+        if threads.farm then threads.farm:Disconnect() end
+        threads.farm = game:GetService("RunService").Heartbeat:Connect(function()
+            if not states.farm then return end
+            local mobName = getQuestMob()
+            if not mobName then return end
+            for _,npc in ipairs(workspace.Enemies:GetChildren()) do
+                if npc:IsA("Model") and npc:FindFirstChild("Humanoid") and npc.Humanoid.Health>0 and npc.Name:find(mobName) then
+                    local char = plr.Character
+                    if char and char:FindFirstChild("HumanoidRootPart") and npc:FindFirstChild("HumanoidRootPart") then
+                        char.HumanoidRootPart.CFrame = npc.HumanoidRootPart.CFrame + Vector3.new(0,3,0)
                     end
-                    wait(0.17)
                 end
-            end)
-            coroutine.resume(state.farmLoop)
-        end
+            end
+        end)
     else
-        notify("Auto Farm OFF")
+        notify("Auto Farm Mob OFF")
+        if threads.farm then threads.farm:Disconnect(); threads.farm=nil end
     end
 end)
 
--- Boss toggle
-state.boss = false
-btns.boss = makeButton("👑 Auto Boss", 65, Color3.fromRGB(255,162,62), function(btn)
-    state.boss = not state.boss
-    btn.BackgroundColor3 = state.boss and Color3.fromRGB(232,184,47) or Color3.fromRGB(255,162,62)
-    if state.boss then
+-- [2] Auto Boss
+states.boss = false
+makeBtn("👑 Auto Boss",38,Color3.fromRGB(255,162,62),function(btn)
+    states.boss = not states.boss
+    btn.BackgroundColor3 = states.boss and Color3.fromRGB(232,184,47) or Color3.fromRGB(255,162,62)
+    local bossNames = {
+        "Bobby","Yeti","Saber Expert","Magma Admiral","Fishman Lord","Warden","Chief Warden","Swan",
+        "Vice Admiral","Don Swan","Fujita","Cyborg","Diamond","Jeremy","Fajita","Smoke Admiral",
+        "Awakened Ice Admiral","Order","Flamingo","Darkbeard","Greybeard","Kilo Admiral",
+        "Island Empress","Tide Keeper","Longma","Stone","Beautiful Pirate","rip_indra","Cake Queen","Cursed Captain","Mammoth","Captain Elephant"
+    }
+    if states.boss then
         notify("Auto Boss ON")
-        if not state.bossLoop or coroutine.status(state.bossLoop)=="dead" then
-            state.bossLoop = coroutine.create(function()
-                while state.boss do
-                    for _,obj in ipairs(workspace:GetDescendants()) do
-                        if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj.Name:lower():find("boss") then
-                            if obj.Humanoid.Health>0 then obj.Humanoid.Health=0 end
+        if threads.boss then threads.boss:Disconnect() end
+        threads.boss = game:GetService("RunService").Heartbeat:Connect(function()
+            if not states.boss then return end
+            for _,npc in ipairs(workspace.Enemies:GetChildren()) do
+                if npc:IsA("Model") and npc:FindFirstChild("Humanoid") and npc.Humanoid.Health>0 then
+                    for _,boss in ipairs(bossNames) do
+                        if npc.Name:lower():find(boss:lower()) then
+                            local char = plr.Character
+                            if char and char:FindFirstChild("HumanoidRootPart") and npc:FindFirstChild("HumanoidRootPart") then
+                                char.HumanoidRootPart.CFrame = npc.HumanoidRootPart.CFrame + Vector3.new(0,7,0)
+                            end
                         end
                     end
-                    wait(0.23)
                 end
-            end)
-            coroutine.resume(state.bossLoop)
-        end
+            end
+        end)
     else
         notify("Auto Boss OFF")
+        if threads.boss then threads.boss:Disconnect(); threads.boss=nil end
     end
 end)
 
--- Auto Pegar toggle
-state.pegar = false
-btns.pegar = makeButton("🌟 Auto Pegar", 120, Color3.fromRGB(102,206,254), function(btn)
-    state.pegar = not state.pegar
-    btn.BackgroundColor3 = state.pegar and Color3.fromRGB(84,255,230) or Color3.fromRGB(102,206,254)
-    if state.pegar then
-        notify("Auto Pegar ON")
-        if not state.pegarLoop or coroutine.status(state.pegarLoop)=="dead" then
-            state.pegarLoop = coroutine.create(function()
-                while state.pegar do
-                    local char=LocalPlayer.Character; if char and char:FindFirstChild("HumanoidRootPart") then
-                        for _,obj in ipairs(workspace:GetDescendants()) do
-                            if obj:IsA("BasePart") and obj.CanCollide and (obj.Position-char.HumanoidRootPart.Position).Magnitude<18 then
-                                firetouchinterest(char.HumanoidRootPart, obj, 0)
-                                wait()
-                                firetouchinterest(char.HumanoidRootPart, obj, 1)
-                            end
-                        end
-                    end
-                    wait(0.22)
-                end
-            end)
-            coroutine.resume(state.pegarLoop)
-        end
-    else
-        notify("Auto Pegar OFF")
-    end
-end)
-
--- AutoClick toggle
-state.click = false
-btns.click = makeButton("⚡ Auto Click", 175, Color3.fromRGB(92, 45, 140), function(btn)
-    state.click = not state.click
-    btn.BackgroundColor3 = state.click and Color3.fromRGB(110,38,197) or Color3.fromRGB(92,45,140)
-    if state.click then
+-- [3] AutoClick
+states.click = false
+makeBtn("⚡ Auto Click",76,Color3.fromRGB(92, 45, 140),function(btn)
+    states.click = not states.click
+    btn.BackgroundColor3 = states.click and Color3.fromRGB(110,38,197) or Color3.fromRGB(92,45,140)
+    if states.click then
         notify("Auto Click ON")
-        if not state.clickLoop or coroutine.status(state.clickLoop)=="dead" then
-            state.clickLoop = coroutine.create(function()
-                while state.click do
-                    local chr=LocalPlayer.Character
-                    if chr and chr:FindFirstChildWhichIsA("Tool") then
-                        for _,ev in pairs(getconnections(Mouse.Button1Down)) do
-                            ev:Fire()
-                        end
-                    end
-                    wait(0.08)
-                end
-            end)
-            coroutine.resume(state.clickLoop)
-        end
+        if threads.click then threads.click:Disconnect() end
+        threads.click = game:GetService("RunService").Heartbeat:Connect(function()
+            if not states.click then return end
+            local char=plr.Character
+            if char and char:FindFirstChildWhichIsA("Tool") then
+                for _,ev in pairs(getconnections(mouse.Button1Down)) do ev:Fire() end
+            end
+        end)
     else
         notify("Auto Click OFF")
+        if threads.click then threads.click:Disconnect(); threads.click=nil end
     end
 end)
 
--- ESP Vermelho toggle
-state.esp = false
-btns.esp = makeButton("🔴 ESP Vermelho", 230, Color3.fromRGB(190,17,30), function(btn)
-    state.esp = not state.esp
-    btn.BackgroundColor3 = state.esp and Color3.fromRGB(167,40,22) or Color3.fromRGB(190,17,30)
-    if state.esp then
+-- [4] ESP players
+states.esp = false; local espParts = {}
+makeBtn("🔴 ESP Vermelho",118,Color3.fromRGB(190,17,30),function(btn)
+    states.esp = not states.esp
+    btn.BackgroundColor3 = states.esp and Color3.fromRGB(167,40,22) or Color3.fromRGB(190,17,30)
+    if states.esp then
         notify("ESP ON")
-        state.espparts = {}
-        for _,plr in ipairs(Players:GetPlayers()) do
-            if plr~=LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") then
-                local adorn=Instance.new("BoxHandleAdornment")
-                adorn.Adornee = plr.Character.Head
-                adorn.Size = Vector3.new(1.9,1.9,1.9)
-                adorn.Color3 = Color3.new(1,0,0)
-                adorn.Transparency = 0.6
-                adorn.AlwaysOnTop = true
-                adorn.ZIndex = 20
-                adorn.Parent = CoreGui
-                table.insert(state.espparts,adorn)
+        for _,p in ipairs(game:GetService("Players"):GetPlayers()) do
+            if p~=plr and p.Character and p.Character:FindFirstChild("Head") then
+                local a=Instance.new("BoxHandleAdornment")
+                a.Adornee=p.Character.Head;a.Size=Vector3.new(1.9,1.9,1.9)
+                a.Color3=Color3.new(1,0,0);a.Transparency=.6;a.AlwaysOnTop=true;a.ZIndex=12
+                a.Parent=cg2
+                table.insert(espParts,a)
             end
         end
     else
         notify("ESP OFF")
-        for _,a in ipairs(state.espparts or {}) do if a and a.Parent then a:Destroy() end end
-        state.espparts={}
+        for _,a in ipairs(espParts) do if a and a.Parent then a:Destroy() end end espParts={}
     end
 end)
 
--- Aimbot toggle
-state.aim = false
-btns.aim = makeButton("🎯 Aimbot", 285, Color3.fromRGB(45,120,70), function(btn)
-    state.aim = not state.aim
-    btn.BackgroundColor3 = state.aim and Color3.fromRGB(23,180,87) or Color3.fromRGB(45,120,70)
-    if state.aim then
+-- [5] Aimbot
+states.aim = false
+makeBtn("🎯 Aimbot",160,Color3.fromRGB(28,180,85),function(btn)
+    states.aim = not states.aim
+    btn.BackgroundColor3 = states.aim and Color3.fromRGB(21,230,140) or Color3.fromRGB(28,180,85)
+    if states.aim then
         notify("Aimbot ON")
-        if not state.aimLoop or coroutine.status(state.aimLoop)=="dead" then
-            state.aimLoop = coroutine.create(function()
-                while state.aim do
-                    local minDist, target
-                    for _,plr in ipairs(Players:GetPlayers()) do
-                        if plr~=LocalPlayer and plr.Character and plr.Character:FindFirstChild("Head") and plr.Character:FindFirstChild("Humanoid") then
-                            if plr.Character.Humanoid.Health>0 and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head") then
-                                local dist = (plr.Character.Head.Position - LocalPlayer.Character.Head.Position).Magnitude
-                                if not minDist or dist < minDist then minDist, target = dist, plr end
-                            end
-                        end
+        if threads.aim then threads.aim:Disconnect() end
+        threads.aim = game:GetService("RunService").Heartbeat:Connect(function()
+            local chr = plr.Character
+            if not states.aim or not chr or not chr:FindFirstChild("Head") then return end
+            local minDist, target
+            for _,other in ipairs(game:GetService("Players"):GetPlayers()) do
+                if other~=plr and other.Character and other.Character:FindFirstChild("Head") and other.Character:FindFirstChild("Humanoid") then
+                    if other.Character.Humanoid.Health>0 then
+                        local dist = (other.Character.Head.Position-chr.Head.Position).Magnitude
+                        if not minDist or dist<minDist then minDist,target=dist,other end
                     end
-                    if target and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Head") then
-                        local cam = workspace.CurrentCamera 
-                        cam.CFrame = CFrame.new(cam.CFrame.Position, target.Character.Head.Position)
-                    end
-                    wait(0.07)
                 end
-            end)
-            coroutine.resume(state.aimLoop)
-        end
+            end
+            if target then workspace.CurrentCamera.CFrame=CFrame.new(workspace.CurrentCamera.CFrame.Position,target.Character.Head.Position) end
+        end)
     else
         notify("Aimbot OFF")
+        if threads.aim then threads.aim:Disconnect() threads.aim=nil end
     end
 end)
 
--- Crédtio
-local c = Instance.new("TextLabel", MainFrame)
-c.Text = "github.com/as1802422-sys | 🌳 JL Hub"
-c.Size = UDim2.new(1,0,0,15)
-c.Position = UDim2.new(0,0,1,-13)
-c.BackgroundTransparency = 1
-c.TextColor3 = Color3.fromRGB(90,120,85)
-c.TextXAlignment = Enum.TextXAlignment.Right
-c.TextYAlignment = Enum.TextYAlignment.Bottom
-c.Font = Enum.Font.Code
-c.TextSize = 13
+-- [6] Anti AFK
+states.afk = false
+makeBtn("💤 Anti AFK",202,Color3.fromRGB(93,174,145),function(btn)
+    states.afk = not states.afk
+    btn.BackgroundColor3 = states.afk and Color3.fromRGB(22,235,185) or Color3.fromRGB(93,174,145)
+    if states.afk then
+        notify("Anti AFK ligado")
+        if threads.afk then threads.afk:Disconnect() end
+        threads.afk = plr.Idled:Connect(function()
+            pcall(function()
+                game:GetService("VirtualUser"):Button2Down(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
+                wait(1)
+                game:GetService("VirtualUser"):Button2Up(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
+            end)
+        end)
+    else
+        notify("Anti AFK desligado")
+        if threads.afk then threads.afk:Disconnect() threads.afk=nil end
+    end
+end)
+
+-- [7] Chat Flood
+states.flood = false
+makeBtn("💬 Flood Chat",244,Color3.fromRGB(214,109,109),function(btn)
+    states.flood = not states.flood
+    btn.BackgroundColor3 = states.flood and Color3.fromRGB(240,40,45) or Color3.fromRGB(214,109,109)
+    if states.flood then
+        notify("Flood ON (use com cuidado/mute!)")
+        if threads.flood then threads.flood:Disconnect() end
+        threads.flood = game:GetService("RunService").Heartbeat:Connect(function()
+            if not states.flood then return end
+            game.ReplicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer("JL HUB NO TOPO 🚀","All")
+            wait(1.25)
+        end)
+    else
+        notify("Flood OFF")
+        if threads.flood then threads.flood:Disconnect() threads.flood=nil end
+    end
+end)
+
+-- [8] Auto Haki (busoshoku/observação)
+states.haki = false
+makeBtn("🥋 Auto Haki (B/Obs)",288,Color3.fromRGB(100,118,210),function(btn)
+    states.haki = not states.haki
+    btn.BackgroundColor3 = states.haki and Color3.fromRGB(95,180,220) or Color3.fromRGB(100,118,210)
+    if states.haki then
+        notify("Auto Haki LIGADO")
+        if threads.haki then threads.haki:Disconnect() end
+        threads.haki = game:GetService("RunService").Heartbeat:Connect(function()
+            local c = plr.Character
+            if c then
+                if c:FindFirstChild("Humanoid") and not c:FindFirstChild("HasBuso") then
+                    game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("Buso")
+                end
+                if c:FindFirstChild("Humanoid") and not c:FindFirstChild("HasObservationHaki") then
+                    game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("Ken")
+                end
+            end
+        end)
+    else
+        notify("Auto Haki desligado")
+        if threads.haki then threads.haki:Disconnect(); threads.haki=nil end
+    end
+end)
+
+-- Créditos / Github
+local cc = Instance.new("TextLabel",frame)
+cc.Text = "github.com/as1802422-sys | JL Hub Ultimate"
+cc.Size = UDim2.new(1, 0, 0, 13)
+cc.Position = UDim2.new(0,0,1,-13)
+cc.BackgroundTransparency = 1
+cc.TextColor3 = Color3.fromRGB(90,120,85)
+cc.TextXAlignment = Enum.TextXAlignment.Right
+cc.TextYAlignment = Enum.TextYAlignment.Bottom
+cc.Font = Enum.Font.Code
+cc.TextSize = 11
+end
+
+local entrar = Instance.new("TextButton",bg)
+entrar.Size = UDim2.new(0.44,0,0,33)
+entrar.Position = UDim2.new(0.06,0,1,-43)
+entrar.BackgroundColor3 = Color3.fromRGB(28, 180, 85)
+entrar.Text = "Entrar"
+entrar.TextColor3 = Color3.fromRGB(255,255,255)
+entrar.Font = Enum.Font.GothamBold
+entrar.TextSize = 20
+entrar.BorderSizePixel=0
+Instance.new("UICorner",entrar).CornerRadius=UDim.new(0,8)
+entrar.MouseButton1Click:Connect(function()
+    if input.Text == KEY then
+        mensagem.TextColor3 = Color3.fromRGB(93,255,122)
+        mensagem.Text = "Key correta, carregando..."
+        wait(0.75)
+        ABRIR_HUB()
+    else
+        mensagem.TextColor3 = Color3.fromRGB(255,93,119)
+        mensagem.Text = "Key INCORRETA! Pegue no Discord."
+    end
+end)
+
+local disc = Instance.new("TextButton",bg)
+disc.Size = UDim2.new(0.44,0,0,33)
+disc.Position = UDim2.new(0.5,8,1,-43)
+disc.BackgroundColor3 = Color3.fromRGB(67,92,212)
+disc.Text = "Pegar Key"
+disc.TextColor3 = Color3.fromRGB(240,245,255)
+disc.Font = Enum.Font.GothamBold
+disc.TextSize = 20
+disc.BorderSizePixel=0
+Instance.new("UICorner",disc).CornerRadius=UDim.new(0,8)
+disc.MouseButton1Click:Connect(function()
+    setclipboard(KEYLINK)
+    mensagem.TextColor3 = Color3.fromRGB(80,180,255)
+    mensagem.Text = "Link Discord copiado!"
+end)
