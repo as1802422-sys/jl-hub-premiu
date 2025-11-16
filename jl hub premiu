@@ -1,366 +1,271 @@
--- JL Hub (Safe UI) - Fullscreen + Categorias à esquerda
--- Key system -> se válida, abre Hub fullscreen com categorias:
--- Left: categorias; Right: conteúdo da categoria (toggles/controles UI-only)
--- NÃO realiza ações que afetem o jogo (apenas simulações/visuais).
+-- JL Hub (Redz-style clone UI-only) - LocalScript
+-- Visual/layout clone with full set of categories and buttons (placeholders only)
+-- IMPORTANT: This script intentionally does NOT implement any cheat/exploit mechanics.
+-- All toggles are UI-only: they update local state, visuals and show notifications.
+-- Use this as an interface shell for testing, design, or for integrating legitimate/admin features.
 
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
 local StarterGui = game:GetService("StarterGui")
+local RunService = game:GetService("RunService")
 local cg = game:GetService("CoreGui")
 
 local plr = Players.LocalPlayer
-
 local ISMobile = UIS.TouchEnabled and not UIS.KeyboardEnabled
-local UIAbsoluteSize = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280,720)
-local deviceWidth, deviceHeight = UIAbsoluteSize.X, UIAbsoluteSize.Y
+local cam = workspace.CurrentCamera
+local viewport = cam and cam.ViewportSize or Vector2.new(1280,720)
+local W, H = viewport.X, viewport.Y
 
 local KEY = "jl123bc"
 local KEYLINK = "https://discord.gg/JT4KdfVta"
 
--- cleanup old GUIs
-for _,v in pairs({"JLHubKey","JLHubMain"}) do if cg:FindFirstChild(v) then cg[v]:Destroy() end end
+-- cleanup
+for _,n in ipairs({"JLHubKey","JLHubMain","JLHubShowBtn"}) do
+    if cg:FindFirstChild(n) then cg[n]:Destroy() end
+end
 
--- ---------- Key GUI ----------
-local kgui = Instance.new("ScreenGui", cg)
-kgui.Name = "JLHubKey"; kgui.IgnoreGuiInset = true
-local kbg = Instance.new("Frame", kgui)
-kbg.Name = "KeyBG"
-kbg.BackgroundColor3 = Color3.fromRGB(20,21,22)
-kbg.BackgroundTransparency = 0.06
-kbg.Size = ISMobile and UDim2.new(0, 300, 0, 160) or UDim2.new(0,380,0,200)
-kbg.Position = UDim2.new(0.5,-kbg.Size.X.Offset/2,0.5,-kbg.Size.Y.Offset/2)
-Instance.new("UICorner",kbg).CornerRadius=UDim.new(0,ISMobile and 10 or 14)
-
-local ktitle = Instance.new("TextLabel",kbg)
-ktitle.Size = UDim2.new(1,0,0,40); ktitle.BackgroundTransparency = 1
-ktitle.Font = Enum.Font.GothamBold; ktitle.Text = "🔑 JL Hub - Key"
-ktitle.TextColor3 = Color3.fromRGB(40,255,180); ktitle.TextSize = ISMobile and 16 or 22
-
-local kinput = Instance.new("TextBox", kbg)
-kinput.Size = ISMobile and UDim2.new(1,-28,0,34) or UDim2.new(1,-36,0,44)
-kinput.Position = UDim2.new(0,14,0,56)
-kinput.BackgroundColor3 = Color3.fromRGB(22,33,35)
-kinput.PlaceholderText = "Digite sua Key..."
-kinput.TextColor3 = Color3.fromRGB(220,255,220)
-kinput.Font = Enum.Font.Gotham; kinput.TextSize = ISMobile and 14 or 18
-Instance.new("UICorner", kinput).CornerRadius = UDim.new(0,8)
-
-local kmensagem = Instance.new("TextLabel", kbg)
-kmensagem.Size = UDim2.new(1,-16,0,20)
-kmensagem.Position = UDim2.new(0,8,0,106)
-kmensagem.BackgroundTransparency = 1
-kmensagem.Font = Enum.Font.Gotham; kmensagem.TextSize = 14
-kmensagem.TextColor3 = Color3.fromRGB(255,100,100)
-
-local kentrar = Instance.new("TextButton", kbg)
-kentrar.Size = UDim2.new(0.44,0,0,34)
-kentrar.Position = UDim2.new(0.06,0,1,-46)
-kentrar.BackgroundColor3 = Color3.fromRGB(28,180,85)
-kentrar.Font = Enum.Font.GothamBold; kentrar.Text = "Entrar"; kentrar.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner", kentrar).CornerRadius = UDim.new(0,8)
-
-local kdisc = Instance.new("TextButton", kbg)
-kdisc.Size = kentrar.Size
-kdisc.Position = UDim2.new(0.5,8,1,kentrar.Position.Y.Offset)
-kdisc.BackgroundColor3 = Color3.fromRGB(67,92,212)
-kdisc.Font = Enum.Font.GothamBold; kdisc.Text = "Pegar Key"; kdisc.TextColor3 = Color3.new(1,1,1)
-Instance.new("UICorner", kdisc).CornerRadius = UDim.new(0,8)
-kdisc.MouseButton1Click:Connect(function()
-    pcall(function() setclipboard(KEYLINK) end)
-    kmensagem.TextColor3 = Color3.fromRGB(80,180,255)
-    kmensagem.Text = "Link Discord copiado!"
-end)
-
--- ---------- Helpers ----------
 local function Notify(msg)
     pcall(function()
-        StarterGui:SetCore("SendNotification", {Title="JL Hub", Text = msg, Duration = 2.4})
+        StarterGui:SetCore("SendNotification", {Title = "JL Hub (UI)", Text = msg, Duration = 2.6})
     end)
 end
 
-local function createToggleRow(parent, labelText, onToggle)
-    local row = Instance.new("Frame", parent)
-    row.Size = UDim2.new(1, -24, 0, ISMobile and 60 or 46)
-    row.BackgroundTransparency = 1
+local function clamp(v,a,b) if v<a then return a elseif v>b then return b else return v end end
 
-    local lbl = Instance.new("TextLabel", row)
-    lbl.Position = UDim2.new(0,8,0,0)
-    lbl.Size = UDim2.new(0.66,0,1,0)
-    lbl.BackgroundTransparency = 1
-    lbl.Font = Enum.Font.GothamBold
-    lbl.TextSize = ISMobile and 18 or 16
-    lbl.TextColor3 = Color3.fromRGB(230,230,230)
-    lbl.Text = labelText
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
+-- ===== Key GUI =====
+local kgui = Instance.new("ScreenGui", cg); kgui.Name = "JLHubKey"; kgui.IgnoreGuiInset = true
+local kb = Instance.new("Frame", kgui); kb.AnchorPoint = Vector2.new(0.5,0.5)
+kb.Position = UDim2.new(0.5,0,0.5,0); kb.Size = ISMobile and UDim2.new(0,320,0,170) or UDim2.new(0,420,0,210)
+kb.BackgroundColor3 = Color3.fromRGB(18,20,22); kb.BorderSizePixel = 0; Instance.new("UICorner", kb).CornerRadius = UDim.new(0,12)
 
-    local tbtn = Instance.new("TextButton", row)
-    tbtn.Size = ISMobile and UDim2.new(0,86,0,40) or UDim2.new(0.26,0,0,34)
-    tbtn.Position = UDim2.new(1, - (ISMobile and 96 or 12) - tbtn.Size.X.Offset, 0, (row.Size.Y.Offset - tbtn.Size.Y.Offset)/2)
-    tbtn.BackgroundColor3 = Color3.fromRGB(77,82,96)
-    tbtn.Font = Enum.Font.GothamBold
-    tbtn.TextSize = ISMobile and 16 or 16
-    tbtn.TextColor3 = Color3.new(1,1,1)
-    tbtn.Text = "OFF"
-    Instance.new("UICorner", tbtn).CornerRadius = UDim.new(0,8)
+local title = Instance.new("TextLabel", kb); title.Size = UDim2.new(1,0,0,44); title.BackgroundTransparency = 1
+title.Font = Enum.Font.GothamBlack; title.Text = "🔑 JL Hub - Key"; title.TextColor3 = Color3.fromRGB(90,170,255); title.TextSize = ISMobile and 16 or 22
 
-    local state = false
-    local function update()
-        if state then
-            tbtn.BackgroundColor3 = Color3.fromRGB(10,200,60)
-            tbtn.Text = "ON"
-        else
-            tbtn.BackgroundColor3 = Color3.fromRGB(77,82,96)
-            tbtn.Text = "OFF"
-        end
+local desc = Instance.new("TextLabel", kb); desc.Size = UDim2.new(1,-28,0,36); desc.Position = UDim2.new(0,14,0,46)
+desc.BackgroundTransparency = 1; desc.Font = Enum.Font.Gotham; desc.TextSize = ISMobile and 13 or 15
+desc.TextColor3 = Color3.fromRGB(200,220,240); desc.Text = "Cole a key do Discord e pressione Entrar"
+
+local kinput = Instance.new("TextBox", kb); kinput.Size = ISMobile and UDim2.new(1,-28,0,34) or UDim2.new(1,-36,0,40)
+kinput.Position = UDim2.new(0,14,0,84); kinput.BackgroundColor3 = Color3.fromRGB(14,16,18)
+kinput.TextColor3 = Color3.fromRGB(220,240,255); kinput.Font = Enum.Font.Gotham; kinput.PlaceholderText = "Digite sua Key..."
+Instance.new("UICorner", kinput).CornerRadius = UDim.new(0,8)
+
+local msglabel = Instance.new("TextLabel", kb); msglabel.Size = UDim2.new(1,-28,0,18); msglabel.Position = UDim2.new(0,14,0,130)
+msglabel.BackgroundTransparency = 1; msglabel.Font = Enum.Font.Gotham; msglabel.TextSize = 14; msglabel.TextColor3 = Color3.fromRGB(255,100,100)
+
+local enterBtn = Instance.new("TextButton", kb); enterBtn.Size = UDim2.new(0.44,0,0,36); enterBtn.Position = UDim2.new(0.06,0,1,-46)
+enterBtn.BackgroundColor3 = Color3.fromRGB(20,160,100); enterBtn.Font = Enum.Font.GothamBold; enterBtn.Text = "Entrar"; enterBtn.TextColor3 = Color3.fromRGB(240,240,240)
+Instance.new("UICorner", enterBtn).CornerRadius = UDim.new(0,8)
+local getBtn = Instance.new("TextButton", kb); getBtn.Size = enterBtn.Size; getBtn.Position = UDim2.new(0.5,8,1,enterBtn.Position.Y.Offset)
+getBtn.BackgroundColor3 = Color3.fromRGB(40,80,200); getBtn.Font = Enum.Font.GothamBold; getBtn.Text = "Pegar Key"; getBtn.TextColor3 = Color3.fromRGB(240,240,255)
+Instance.new("UICorner", getBtn).CornerRadius = UDim.new(0,8)
+getBtn.MouseButton1Click:Connect(function() pcall(function() setclipboard(KEYLINK) end); msglabel.TextColor3 = Color3.fromRGB(80,180,255); msglabel.Text = "Link Discord copiado!" end)
+
+-- ===== Floating button JL Hub =====
+local showGui = Instance.new("ScreenGui", cg); showGui.Name = "JLHubShowBtn"; showGui.IgnoreGuiInset = true
+local showBtn = Instance.new("TextButton", showGui)
+showBtn.Size = ISMobile and UDim2.new(0,110,0,40) or UDim2.new(0,136,0,46)
+showBtn.Position = ISMobile and UDim2.new(1,-140,0,20) or UDim2.new(0,20,0.38,0)
+showBtn.Text = "JL Hub"; showBtn.Font = Enum.Font.GothamBlack; showBtn.TextSize = ISMobile and 16 or 20
+showBtn.TextColor3 = Color3.fromRGB(90,170,255); showBtn.BackgroundColor3 = Color3.fromRGB(12,12,14)
+Instance.new("UICorner", showBtn).CornerRadius = UDim.new(0,10)
+
+local draggingBtn, dxBtn, dyBtn = false, 0, 0
+showBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        draggingBtn = true
+        dxBtn = input.Position.X - showBtn.Position.X.Offset
+        dyBtn = input.Position.Y - showBtn.Position.Y.Offset
     end
-    tbtn.MouseButton1Click:Connect(function()
-        state = not state
-        update()
-        if onToggle then pcall(onToggle, state) end
-    end)
-    update()
-    return row, function() return state end, function(v) state=v; update() end
-end
+end)
+UIS.InputChanged:Connect(function(input)
+    if draggingBtn and (input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch) then
+        local x = input.Position.X - dxBtn
+        local y = input.Position.Y - dyBtn
+        showBtn.Position = UDim2.new(0, clamp(x,0,W-showBtn.Size.X.Offset), 0, clamp(y,0,H-showBtn.Size.Y.Offset))
+    end
+end)
+UIS.InputEnded:Connect(function(input) if draggingBtn then draggingBtn = false end end)
 
--- ---------- ABRIR HUB (fullscreen) ----------
-local function ABRIR_HUB()
-    kgui:Destroy()
+-- hub GUI var
+local hubGui = nil
 
-    -- main screen gui
-    local sg = Instance.new("ScreenGui", cg)
-    sg.Name = "JLHubMain"; sg.IgnoreGuiInset = true; sg.ResetOnSpawn = false
+-- ===== Build Hub (full-screen, Redz-style look) =====
+local function buildHub()
+    if hubGui and hubGui.Parent then hubGui:Destroy() end
+    hubGui = Instance.new("ScreenGui", cg); hubGui.Name = "JLHubMain"; hubGui.IgnoreGuiInset = true; hubGui.ResetOnSpawn = false
 
-    -- background overlay (dim)
-    local overlay = Instance.new("Frame", sg)
-    overlay.Size = UDim2.new(1,0,1,0)
-    overlay.Position = UDim2.new(0,0,0,0)
-    overlay.BackgroundColor3 = Color3.fromRGB(10,10,12)
-    overlay.BackgroundTransparency = 0.06
+    -- background tree image (black-blue tint)
+    local bg = Instance.new("ImageLabel", hubGui)
+    bg.Name = "BackgroundTree"; bg.Image = "rbxassetid://14924794312"
+    bg.Size = UDim2.new(1,0,1,0); bg.Position = UDim2.new(0,0,0,0); bg.BackgroundTransparency = 1; bg.ImageTransparency = 0.72
+    local overlay = Instance.new("Frame", hubGui); overlay.Size = UDim2.new(1,0,1,0); overlay.BackgroundColor3 = Color3.fromRGB(8,10,12); overlay.BackgroundTransparency = 0.28
 
-    -- Hub container full screen
-    local hub = Instance.new("Frame", sg)
-    hub.Name = "HubFull"
-    hub.Size = UDim2.new(1,0,1,0)
-    hub.Position = UDim2.new(0,0,0,0)
-    hub.BackgroundColor3 = Color3.fromRGB(20,24,28)
-    hub.BackgroundTransparency = 0.04
-    hub.BorderSizePixel = 0
-    Instance.new("UICorner", hub).CornerRadius = UDim.new(0,0)
+    -- main container
+    local hub = Instance.new("Frame", hubGui); hub.Name = "HubContainer"; hub.Size = UDim2.new(1,-40,1,-40); hub.Position = UDim2.new(0,20,0,20)
+    hub.BackgroundColor3 = Color3.fromRGB(8,10,14); hub.BorderSizePixel = 0; Instance.new("UICorner", hub).CornerRadius = UDim.new(0,12)
 
-    -- Title bar
-    local titleBar = Instance.new("Frame", hub)
-    titleBar.Size = UDim2.new(1,0,0, ISMobile and 56 or 72)
-    titleBar.Position = UDim2.new(0,0,0,0)
-    titleBar.BackgroundTransparency = 1
-    local title = Instance.new("TextLabel", titleBar)
-    title.Text = "🌳 JL Hub - Fullscreen"
-    title.Font = Enum.Font.GothamBlack
-    title.TextSize = ISMobile and 18 or 28
-    title.TextColor3 = Color3.fromRGB(120,200,255)
-    title.BackgroundTransparency = 1
-    title.Size = UDim2.new(1,-140,1,0)
-    title.Position = UDim2.new(0,20,0,0)
-    title.TextXAlignment = Enum.TextXAlignment.Left
+    -- title bar
+    local titleBar = Instance.new("Frame", hub); titleBar.Size = UDim2.new(1,0,0,72); titleBar.BackgroundTransparency = 1
+    local titleLabel = Instance.new("TextLabel", titleBar); titleLabel.Position = UDim2.new(0,20,0,12)
+    titleLabel.Size = UDim2.new(0.6,0,1,0); titleLabel.BackgroundTransparency = 1
+    titleLabel.Font = Enum.Font.GothamBlack; titleLabel.Text = "JL Hub"; titleLabel.TextColor3 = Color3.fromRGB(90,170,255)
+    titleLabel.TextSize = ISMobile and 20 or 34; titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-    local closeBtn = Instance.new("TextButton", titleBar)
-    closeBtn.Text = "✕"; closeBtn.Font = Enum.Font.GothamBlack
-    closeBtn.TextSize = ISMobile and 16 or 22
-    closeBtn.Size = ISMobile and UDim2.new(0,44,0,36) or UDim2.new(0,48,0,40)
-    closeBtn.Position = UDim2.new(1,-(ISMobile and 64 or 80),0,(ISMobile and 10 or 16))
-    closeBtn.BackgroundColor3 = Color3.fromRGB(25,28,35); closeBtn.TextColor3 = Color3.fromRGB(220,220,220)
-    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0,8)
-    closeBtn.MouseButton1Click:Connect(function()
-        sg:Destroy()
-    end)
+    local squareBtn = Instance.new("TextButton", titleBar); squareBtn.Size = ISMobile and UDim2.new(0,56,0,40) or UDim2.new(0,84,0,48)
+    squareBtn.Position = UDim2.new(1,-(ISMobile and 80 or 110),0,12); squareBtn.BackgroundColor3 = Color3.fromRGB(6,8,10)
+    squareBtn.Text = "JL Hub"; squareBtn.Font = Enum.Font.GothamBlack; squareBtn.TextColor3 = Color3.fromRGB(90,170,255)
+    Instance.new("UICorner", squareBtn).CornerRadius = UDim.new(0,8)
+    squareBtn.MouseButton1Click:Connect(function() hub.Visible = not hub.Visible end)
 
-    -- Layout: left categories column + right content area
-    local leftWidth = ISMobile and 180 or 240
-    local leftCol = Instance.new("Frame", hub)
-    leftCol.Size = UDim2.new(0, leftWidth, 1, -titleBar.Size.Y.Offset - 20)
-    leftCol.Position = UDim2.new(0, 12, 0, titleBar.Size.Y.Offset + 12)
-    leftCol.BackgroundColor3 = Color3.fromRGB(16,18,22)
-    leftCol.BackgroundTransparency = 0.03
-    leftCol.BorderSizePixel = 0
-    Instance.new("UICorner", leftCol).CornerRadius = UDim.new(0,10)
+    -- left categories column and right content
+    local leftW = ISMobile and 160 or 220
+    local leftCol = Instance.new("Frame", hub); leftCol.Size = UDim2.new(0,leftW,1,-titleBar.Size.Y.Offset-24)
+    leftCol.Position = UDim2.new(0,12,0,titleBar.Size.Y.Offset+12); leftCol.BackgroundColor3 = Color3.fromRGB(10,12,16); Instance.new("UICorner", leftCol).CornerRadius = UDim.new(0,10)
+    local rightCol = Instance.new("Frame", hub); rightCol.Size = UDim2.new(1,-(leftW+48),1,-titleBar.Size.Y.Offset-24)
+    rightCol.Position = UDim2.new(0,leftW+24,0,titleBar.Size.Y.Offset+12); rightCol.BackgroundColor3 = Color3.fromRGB(14,16,20); Instance.new("UICorner", rightCol).CornerRadius = UDim.new(0,10)
 
-    local rightCol = Instance.new("Frame", hub)
-    rightCol.Size = UDim2.new(1, -(leftWidth+48), 1, -titleBar.Size.Y.Offset - 20)
-    rightCol.Position = UDim2.new(0, leftWidth + 24, 0, titleBar.Size.Y.Offset + 12)
-    rightCol.BackgroundColor3 = Color3.fromRGB(22,26,30)
-    rightCol.BackgroundTransparency = 0.02
-    rightCol.BorderSizePixel = 0
-    Instance.new("UICorner", rightCol).CornerRadius = UDim.new(0,10)
-
-    -- Left: category buttons
-    local catLayout = Instance.new("UIListLayout", leftCol)
-    catLayout.Padding = UDim.new(0,8)
-    catLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    catLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    catLayout.Padding = UDim.new(0,8)
-
-    local categories = {"Main","Combat","Utility","Islands","Settings"}
-    local catButtons = {}
-    local activeCategory = "Main"
-
+    local categories = {
+        "Main", "Combat", "Player", "Teleports", "Visuals", "Misc", "Settings"
+    }
+    local activeCat = categories[1]
     local function clearRight()
-        for _,c in pairs(rightCol:GetChildren()) do
-            if not c:IsA("UIListLayout") and c ~= titleBar and c.Name ~= "RightPadding" then
-                c:Destroy()
-            end
-        end
+        for _,c in ipairs(rightCol:GetChildren()) do if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then c:Destroy() end end
     end
 
-    local function setActiveCat(name)
-        activeCategory = name
-        for n,btn in pairs(catButtons) do
-            btn.BackgroundColor3 = (n==name) and Color3.fromRGB(50,90,140) or Color3.fromRGB(30,34,42)
+    local function makeToggle(parent, labelText, callback)
+        local row = Instance.new("Frame", parent); row.Size = UDim2.new(1,-28,0, ISMobile and 64 or 48); row.BackgroundTransparency = 1
+        local lbl = Instance.new("TextLabel", row); lbl.Position = UDim2.new(0,12,0,0); lbl.Size = UDim2.new(0.66,0,1,0)
+        lbl.BackgroundTransparency = 1; lbl.Font = Enum.Font.GothamBold; lbl.TextSize = ISMobile and 18 or 16; lbl.TextColor3 = Color3.fromRGB(230,230,230)
+        lbl.Text = labelText; lbl.TextXAlignment = Enum.TextXAlignment.Left
+        local tbtn = Instance.new("TextButton", row); tbtn.Size = ISMobile and UDim2.new(0,86,0,40) or UDim2.new(0.26,0,0,34)
+        tbtn.Position = UDim2.new(1,-(ISMobile and 96 or 12) - tbtn.Size.X.Offset,0,(row.Size.Y.Offset - tbtn.Size.Y.Offset)/2)
+        tbtn.Font = Enum.Font.GothamBold; tbtn.TextSize = ISMobile and 16 or 16; tbtn.Text = "OFF"; tbtn.TextColor3 = Color3.fromRGB(240,240,240)
+        tbtn.BackgroundColor3 = Color3.fromRGB(60,64,70); Instance.new("UICorner", tbtn).CornerRadius = UDim.new(0,8)
+        local state = false
+        local function set(s)
+            state = s
+            if state then tbtn.BackgroundColor3 = Color3.fromRGB(12,180,100); tbtn.Text = "ON" else tbtn.BackgroundColor3 = Color3.fromRGB(60,64,70); tbtn.Text = "OFF" end
+            if callback then pcall(callback, state) end
         end
-        -- repopulate right area
+        tbtn.MouseButton1Click:Connect(function() set(not state) end)
+        return row
+    end
+
+    local function populate(name)
         clearRight()
-        -- container scroll for content
-        local content = Instance.new("ScrollingFrame", rightCol)
-        content.Name = "ContentScroll"
-        content.Size = UDim2.new(1,-24,1,-24)
-        content.Position = UDim2.new(0,12,0,12)
-        content.BackgroundTransparency = 1
-        content.ScrollBarThickness = 8
-        content.AutomaticCanvasSize = Enum.AutomaticSize.Y
-        local layout = Instance.new("UIListLayout", content)
-        layout.Padding = UDim.new(0,12)
-        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        local scroll = Instance.new("ScrollingFrame", rightCol); scroll.Name = "ContentScroll"; scroll.Size = UDim2.new(1,-24,1,-24)
+        scroll.Position = UDim2.new(0,12,0,12); scroll.BackgroundTransparency = 1; scroll.ScrollBarThickness = 8; scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        local layout = Instance.new("UIListLayout", scroll); layout.Padding = UDim.new(0,12); layout.SortOrder = Enum.SortOrder.LayoutOrder
 
         if name == "Main" then
-            -- Auto Farm
-            local row, getState, setState = createToggleRow(content, "AUTO FARM", function(state)
-                if state then Notify("Auto Farm (simulado) ativado.") else Notify("Auto Farm desligado.") end
-            end)
-            row.LayoutOrder = 1
-            -- Auto Boss
-            local row2, getState2, setState2 = createToggleRow(content, "AUTO BOSS", function(state)
-                if state then Notify("Auto Boss (simulado) ativado.") else Notify("Auto Boss desligado.") end
-            end)
-            row2.LayoutOrder = 2
+            makeToggle(scroll, "AUTO FARM", function(s) Notify("AUTO FARM (simulado): " .. (s and "ON" or "OFF")) end).LayoutOrder = 1
+            makeToggle(scroll, "AUTO BOSS", function(s) Notify("AUTO BOSS (simulado): " .. (s and "ON" or "OFF")) end).LayoutOrder = 2
+            makeToggle(scroll, "AUTO BUY (simulado)", function(s) Notify("AUTO BUY (simulado): " .. (s and "ON" or "OFF")) end).LayoutOrder = 3
+            local info = Instance.new("TextLabel", scroll); info.Size = UDim2.new(1,-28,0,68); info.BackgroundTransparency = 1
+            info.Font = Enum.Font.Gotham; info.TextSize = 14; info.TextColor3 = Color3.fromRGB(190,200,230)
+            info.Text = "Main contains farm automation placeholders (UI-only). Replace with authorized server APIs if you manage the game."; info.LayoutOrder = 4
 
         elseif name == "Combat" then
-            createToggleRow(content, "ESP (lista UI)", function(s)
-                Notify("ESP (visual) "..(s and "ativado" or "desativado"))
-            end).LayoutOrder = 1
-            createToggleRow(content, "AIMBOT (crosshair visual)", function(s)
-                Notify("Aimbot visual "..(s and "ativado" or "desativado"))
-            end).LayoutOrder = 2
-            createToggleRow(content, "AUTO HAKI (simulado)", function(s)
-                Notify("Auto Haki "..(s and "ativado" or "desativado"))
-            end).LayoutOrder = 3
+            makeToggle(scroll, "ESP (UI list)", function(s) Notify("ESP (UI-only): " .. (s and "ON" or "OFF")) end).LayoutOrder = 1
+            makeToggle(scroll, "AIMBOT (crosshair visual)", function(s) Notify("AIMBOT visual: " .. (s and "ON" or "OFF")) end).LayoutOrder = 2
+            makeToggle(scroll, "SILENT AIM (placeholder)", function(s) Notify("SILENT AIM (placeholder) " .. (s and "ON" or "OFF")) end).LayoutOrder = 3
+            makeToggle(scroll, "AUTO HAKI", function(s) Notify("AUTO HAKI (simulado): " .. (s and "ON" or "OFF")) end).LayoutOrder = 4
 
-        elseif name == "Utility" then
-            createToggleRow(content, "ANTI AFK (simulado)", function(s)
-                Notify("Anti AFK "..(s and "ativado" or "desativado"))
-            end).LayoutOrder = 1
-            createToggleRow(content, "FLOOD (log local)", function(s)
-                Notify("Flood (log) "..(s and "ativado" or "desativado"))
-            end).LayoutOrder = 2
+        elseif name == "Player" then
+            makeToggle(scroll, "WALK SPEED (UI adjust only)", function(s) Notify("WalkSpeed adjust (UI-only): " .. (s and "APPLIED" or "RESET")) end).LayoutOrder = 1
+            makeToggle(scroll, "JUMP POWER (UI adjust only)", function(s) Notify("JumpPower adjust (UI-only): " .. (s and "APPLIED" or "RESET")) end).LayoutOrder = 2
+            makeToggle(scroll, "NO CLIP (placeholder)", function(s) Notify("NO CLIP (placeholder): " .. (s and "ENABLED" or "DISABLED")) end).LayoutOrder = 3
 
-        elseif name == "Islands" then
-            -- islands dropdown display
-            local islands = {"Starter Island","Second Island","Third Island","Fourth Island"}
-            local currentIndex = 1
-            local rowFrame = Instance.new("Frame", content)
-            rowFrame.Size = UDim2.new(1,-24,0,56)
-            rowFrame.BackgroundTransparency = 1
-            rowFrame.LayoutOrder = 1
-            local lbl = Instance.new("TextLabel", rowFrame)
-            lbl.Size = UDim2.new(0.6,0,1,0)
-            lbl.Position = UDim2.new(0,8,0,0)
-            lbl.BackgroundTransparency = 1
-            lbl.Font = Enum.Font.GothamBold
-            lbl.TextSize = ISMobile and 18 or 16
-            lbl.TextColor3 = Color3.fromRGB(230,230,230)
-            lbl.Text = "Ilha selecionada: "..islands[currentIndex]
-            lbl.TextXAlignment = Enum.TextXAlignment.Left
-
-            local nextBtn = Instance.new("TextButton", rowFrame)
-            nextBtn.Size = ISMobile and UDim2.new(0,86,0,40) or UDim2.new(0.26,0,0,34)
-            nextBtn.Position = UDim2.new(1,-(ISMobile and 96 or 12) - nextBtn.Size.X.Offset,0,(rowFrame.Size.Y.Offset - nextBtn.Size.Y.Offset)/2)
-            nextBtn.BackgroundColor3 = Color3.fromRGB(60,70,100)
-            nextBtn.Font = Enum.Font.GothamBold
-            nextBtn.TextColor3 = Color3.fromRGB(240,240,255)
-            nextBtn.Text = "Próxima Ilha"
-            Instance.new("UICorner", nextBtn).CornerRadius = UDim.new(0,8)
-            nextBtn.MouseButton1Click:Connect(function()
-                currentIndex = currentIndex + 1
-                if currentIndex > #islands then currentIndex = 1 end
-                lbl.Text = "Ilha selecionada: "..islands[currentIndex]
-                Notify("Ilha selecionada: "..islands[currentIndex].." (sem teleporte)")
-            end)
-        elseif name == "Settings" then
-            -- Example settings: show/hide overlay, reset position (not applicable fullscreen)
-            local t1 = createToggleRow(content, "Mostrar Overlay", function(s)
-                overlay.Visible = s
-                Notify("Overlay "..(s and "visível" or "oculto"))
-            end)
-            t1.LayoutOrder = 1
-            local btn = Instance.new("TextButton", content)
-            btn.Size = UDim2.new(1,-24,0,42)
-            btn.BackgroundColor3 = Color3.fromRGB(60,60,70)
-            btn.Font = Enum.Font.GothamBold
-            btn.Text = "Fechar Hub"
-            btn.TextColor3 = Color3.fromRGB(240,240,240)
-            btn.LayoutOrder = 2
+        elseif name == "Teleports" then
+            -- only dropdown/button UI; no teleport action
+            local islands = {"Starter","Second","Third","Fourth","BossIsland"}
+            local idx = 1
+            local row = Instance.new("Frame", scroll); row.Size = UDim2.new(1,-28,0,56); row.BackgroundTransparency = 1; row.LayoutOrder = 1
+            local lbl = Instance.new("TextLabel", row); lbl.Size = UDim2.new(0.6,0,1,0); lbl.Position = UDim2.new(0,12,0,0)
+            lbl.BackgroundTransparency = 1; lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 16; lbl.TextColor3 = Color3.fromRGB(230,230,230)
+            lbl.Text = "Ilha: " .. islands[idx]; lbl.TextXAlignment = Enum.TextXAlignment.Left
+            local btn = Instance.new("TextButton", row); btn.Size = ISMobile and UDim2.new(0,86,0,40) or UDim2.new(0.26,0,0,34)
+            btn.Position = UDim2.new(1,-(ISMobile and 96 or 12) - btn.Size.X.Offset,0,(row.Size.Y.Offset - btn.Size.Y.Offset)/2)
+            btn.BackgroundColor3 = Color3.fromRGB(60,70,100); btn.Font = Enum.Font.GothamBold; btn.TextColor3 = Color3.fromRGB(240,240,255); btn.Text = "Próxima"
             Instance.new("UICorner", btn).CornerRadius = UDim.new(0,8)
-            btn.MouseButton1Click:Connect(function() sg:Destroy() end)
-        end
+            btn.MouseButton1Click:Connect(function() idx = idx + 1; if idx > #islands then idx = 1 end; lbl.Text = "Ilha: " .. islands[idx]; Notify("Ilha selecionada: " .. islands[idx] .. " (sem teleporte)") end)
 
-        -- wait small tick to let UIListLayout update
-        wait()
+            makeToggle(scroll, "Teleport to Boss (placeholder)", function(s) Notify("Teleport (placeholder): " .. (s and "ON" or "OFF")) end).LayoutOrder = 2
+
+        elseif name == "Visuals" then
+            makeToggle(scroll, "Name ESP (UI)", function(s) Notify("Name ESP (UI): " .. (s and "ON" or "OFF")) end).LayoutOrder = 1
+            makeToggle(scroll, "Tracers (UI)", function(s) Notify("Tracers (UI): " .. (s and "ON" or "OFF")) end).LayoutOrder = 2
+            makeToggle(scroll, "Chams (UI)", function(s) Notify("Chams (UI): " .. (s and "ON" or "OFF")) end).LayoutOrder = 3
+
+        elseif name == "Misc" then
+            makeToggle(scroll, "ANTI AFK (simulado)", function(s) Notify("ANTI AFK (simulado): " .. (s and "ON" or "OFF")) end).LayoutOrder = 1
+            makeToggle(scroll, "Auto Rebirth (placeholder)", function(s) Notify("Auto Rebirth (placeholder): " .. (s and "ON" or "OFF")) end).LayoutOrder = 2
+            makeToggle(scroll, "Auto Collect (placeholder)", function(s) Notify("Auto Collect (placeholder): " .. (s and "ON" or "OFF")) end).LayoutOrder = 3
+
+        elseif name == "Settings" then
+            makeToggle(scroll, "Mostrar Overlay", function(s) overlay.Visible = s; Notify("Overlay " .. (s and "visível" or "oculto")) end).LayoutOrder = 1
+            local closeBtn = Instance.new("TextButton", scroll); closeBtn.Size = UDim2.new(1,-28,0,40)
+            closeBtn.BackgroundColor3 = Color3.fromRGB(80,80,90); closeBtn.Font = Enum.Font.GothamBold; closeBtn.Text = "Fechar Hub"
+            closeBtn.TextColor3 = Color3.fromRGB(240,240,240); Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0,8)
+            closeBtn.LayoutOrder = 2
+            closeBtn.MouseButton1Click:Connect(function() hubGui:Destroy() end)
+        end
     end
 
-    -- create category buttons
+    -- create left category buttons
     for i,cat in ipairs(categories) do
         local btn = Instance.new("TextButton", leftCol)
-        btn.Name = "Cat_"..cat
-        btn.Size = UDim2.new(1,-16,0, ISMobile and 56 or 48)
-        btn.Position = UDim2.new(0,8,0,0)
-        btn.AnchorPoint = Vector2.new(0,0)
-        btn.BackgroundColor3 = (cat == activeCategory) and Color3.fromRGB(50,90,140) or Color3.fromRGB(30,34,42)
-        btn.Font = Enum.Font.GothamBold
-        btn.TextSize = ISMobile and 16 or 16
-        btn.TextColor3 = Color3.fromRGB(230,230,230)
-        btn.Text = cat
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0,8)
-        btn.LayoutOrder = i
+        btn.Name = "Cat_"..cat; btn.Size = UDim2.new(1,-18,0, ISMobile and 56 or 48); btn.Position = UDim2.new(0,9,0,0)
+        btn.BackgroundColor3 = (cat==activeCat) and Color3.fromRGB(35,72,120) or Color3.fromRGB(18,20,24)
+        btn.Font = Enum.Font.GothamBold; btn.Text = cat; btn.TextColor3 = Color3.fromRGB(220,230,255)
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0,8); btn.LayoutOrder = i
         btn.MouseButton1Click:Connect(function()
-            setActiveCat(cat)
+            for _,c in pairs(leftCol:GetChildren()) do if c:IsA("TextButton") then c.BackgroundColor3 = Color3.fromRGB(18,20,24) end end
+            btn.BackgroundColor3 = Color3.fromRGB(35,72,120)
+            activeCat = cat
+            populate(cat)
         end)
-        catButtons[cat] = btn
     end
 
     -- initial populate
-    setActiveCat(activeCategory)
+    populate(activeCat)
 
-    -- ESC to toggle visibility
-    UIS.InputBegan:Connect(function(input, gameProcessed)
-        if gameProcessed then return end
+    -- ESC toggle visibility
+    local escConn
+    escConn = UIS.InputBegan:Connect(function(input, gp) if gp then return end
         if input.KeyCode == Enum.KeyCode.Escape then
-            if hub.Visible then
-                hub.Visible = false
-            else
-                hub.Visible = true
-            end
+            hub.Visible = not hub.Visible
         end
     end)
+    hubGui.Destroying:Connect(function() if escConn then escConn:Disconnect() end end)
 
-    Notify("JL Hub carregado (fullscreen).")
+    Notify("JL Hub UI carregado (visual clone, sem cheats).")
 end
 
-kentrar.MouseButton1Click:Connect(function()
-    if kinput.Text == KEY then
-        kmensagem.TextColor3 = Color3.fromRGB(93,255,122)
-        kmensagem.Text = "Key correta! Abrindo hub..."
-        wait(0.25)
-        ABRIR_HUB()
+-- showBtn behavior: toggle or show key GUI
+showBtn.MouseButton1Click:Connect(function()
+    if hubGui and hubGui.Parent then
+        hubGui.Enabled = not hubGui.Enabled
     else
-        kmensagem.TextColor3 = Color3.fromRGB(255,93,119)
-        kmensagem.Text = "Key INCORRETA! Pegue no Discord."
+        if kgui and kgui.Parent == nil then kgui.Parent = cg end
     end
 end)
+
+-- Key enter
+enterBtn.MouseButton1Click:Connect(function()
+    if kinput.Text == KEY then
+        msglabel.TextColor3 = Color3.fromRGB(120,255,160); msglabel.Text = "Key correta! Abrindo JL Hub..."
+        wait(0.25)
+        if kgui and kgui.Parent then kgui:Destroy() end
+        buildHub()
+    else
+        msglabel.TextColor3 = Color3.fromRGB(255,100,100); msglabel.Text = "Key incorreta! Pegue no Discord."
+    end
+end)
+
+-- allow Enter key on TextBox
+kinput.FocusLost:Connect(function(entered) if entered then enterBtn.MouseButton1Click:Wait() end end)
+
+-- initial
+Notify("JL Hub UI loader pronto. Abra com o botão JL Hub ou insira a key.")
