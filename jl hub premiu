@@ -1,271 +1,606 @@
--- JL Hub (Redz-style clone UI-only) - LocalScript
--- Visual/layout clone with full set of categories and buttons (placeholders only)
--- IMPORTANT: This script intentionally does NOT implement any cheat/exploit mechanics.
--- All toggles are UI-only: they update local state, visuals and show notifications.
--- Use this as an interface shell for testing, design, or for integrating legitimate/admin features.
+-- JL Hub - UI-only (placeholders) com as colunas e botões requisitados
+-- LocalScript (client). ESTA VERSÃO NÃO EXECUTA TRAPAS/EXPLOITS.
+-- Todos os controles são UI-only: salvam estado, mostram notificações e simulam comportamento visual.
+-- Colunas/itens implementados:
+-- Top/Left: Main  -> AUTO FARM (escolha Sword/Fist), AUTO BOSS, AUTO MASTERY (selecionar Fruit/Gun)
+-- Left: Player -> AIMBOT (crosshair visual), ESP PLAYERS (lista), ESP FRUITS (lista)
+-- Left: Raid|Fruta -> RANDOM FRUITS (gira frutas automaticamente UI-only), (duas linhas vazias),
+--                     AUTO BUY CHIP (simulado), AUTO RAID (simulado com progresso), AUTO AWK (simulado)
+-- Left: Settings -> VELOCIDADE (slider UI, salva atributo, max 350)
+--
+-- Uso: cole este arquivo como LocalScript no cliente (StarterPlayerScripts). Insira a key "jl123bc" no prompt
+-- para abrir o Hub. O script garante limpeza de GUIs anteriores com os mesmos nomes.
 
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
-local StarterGui = game:GetService("StarterGui")
 local RunService = game:GetService("RunService")
-local cg = game:GetService("CoreGui")
+local StarterGui = game:GetService("StarterGui")
+local CoreGui = game:GetService("CoreGui")
 
-local plr = Players.LocalPlayer
-local ISMobile = UIS.TouchEnabled and not UIS.KeyboardEnabled
-local cam = workspace.CurrentCamera
-local viewport = cam and cam.ViewportSize or Vector2.new(1280,720)
-local W, H = viewport.X, viewport.Y
+local LocalPlayer = Players.LocalPlayer
+if not LocalPlayer then return end
 
+-- Config
 local KEY = "jl123bc"
 local KEYLINK = "https://discord.gg/JT4KdfVta"
+local BG_ASSET = "rbxassetid://14924794312"
+local IS_MOBILE = UIS.TouchEnabled and not UIS.KeyboardEnabled
 
--- cleanup
-for _,n in ipairs({"JLHubKey","JLHubMain","JLHubShowBtn"}) do
-    if cg:FindFirstChild(n) then cg[n]:Destroy() end
+-- cleanup old GUIs
+for _,name in ipairs({"JLHubKey","JLHubMain","JLHubShowBtn"}) do
+    local ex = CoreGui:FindFirstChild(name)
+    if ex then pcall(function() ex:Destroy() end) end
 end
 
-local function Notify(msg)
+-- helpers
+local function notify(text)
     pcall(function()
-        StarterGui:SetCore("SendNotification", {Title = "JL Hub (UI)", Text = msg, Duration = 2.6})
+        StarterGui:SetCore("SendNotification", {Title="JL Hub", Text=text, Duration=2.6})
     end)
 end
 
 local function clamp(v,a,b) if v<a then return a elseif v>b then return b else return v end end
-
--- ===== Key GUI =====
-local kgui = Instance.new("ScreenGui", cg); kgui.Name = "JLHubKey"; kgui.IgnoreGuiInset = true
-local kb = Instance.new("Frame", kgui); kb.AnchorPoint = Vector2.new(0.5,0.5)
-kb.Position = UDim2.new(0.5,0,0.5,0); kb.Size = ISMobile and UDim2.new(0,320,0,170) or UDim2.new(0,420,0,210)
-kb.BackgroundColor3 = Color3.fromRGB(18,20,22); kb.BorderSizePixel = 0; Instance.new("UICorner", kb).CornerRadius = UDim.new(0,12)
-
-local title = Instance.new("TextLabel", kb); title.Size = UDim2.new(1,0,0,44); title.BackgroundTransparency = 1
-title.Font = Enum.Font.GothamBlack; title.Text = "🔑 JL Hub - Key"; title.TextColor3 = Color3.fromRGB(90,170,255); title.TextSize = ISMobile and 16 or 22
-
-local desc = Instance.new("TextLabel", kb); desc.Size = UDim2.new(1,-28,0,36); desc.Position = UDim2.new(0,14,0,46)
-desc.BackgroundTransparency = 1; desc.Font = Enum.Font.Gotham; desc.TextSize = ISMobile and 13 or 15
-desc.TextColor3 = Color3.fromRGB(200,220,240); desc.Text = "Cole a key do Discord e pressione Entrar"
-
-local kinput = Instance.new("TextBox", kb); kinput.Size = ISMobile and UDim2.new(1,-28,0,34) or UDim2.new(1,-36,0,40)
-kinput.Position = UDim2.new(0,14,0,84); kinput.BackgroundColor3 = Color3.fromRGB(14,16,18)
-kinput.TextColor3 = Color3.fromRGB(220,240,255); kinput.Font = Enum.Font.Gotham; kinput.PlaceholderText = "Digite sua Key..."
-Instance.new("UICorner", kinput).CornerRadius = UDim.new(0,8)
-
-local msglabel = Instance.new("TextLabel", kb); msglabel.Size = UDim2.new(1,-28,0,18); msglabel.Position = UDim2.new(0,14,0,130)
-msglabel.BackgroundTransparency = 1; msglabel.Font = Enum.Font.Gotham; msglabel.TextSize = 14; msglabel.TextColor3 = Color3.fromRGB(255,100,100)
-
-local enterBtn = Instance.new("TextButton", kb); enterBtn.Size = UDim2.new(0.44,0,0,36); enterBtn.Position = UDim2.new(0.06,0,1,-46)
-enterBtn.BackgroundColor3 = Color3.fromRGB(20,160,100); enterBtn.Font = Enum.Font.GothamBold; enterBtn.Text = "Entrar"; enterBtn.TextColor3 = Color3.fromRGB(240,240,240)
-Instance.new("UICorner", enterBtn).CornerRadius = UDim.new(0,8)
-local getBtn = Instance.new("TextButton", kb); getBtn.Size = enterBtn.Size; getBtn.Position = UDim2.new(0.5,8,1,enterBtn.Position.Y.Offset)
-getBtn.BackgroundColor3 = Color3.fromRGB(40,80,200); getBtn.Font = Enum.Font.GothamBold; getBtn.Text = "Pegar Key"; getBtn.TextColor3 = Color3.fromRGB(240,240,255)
-Instance.new("UICorner", getBtn).CornerRadius = UDim.new(0,8)
-getBtn.MouseButton1Click:Connect(function() pcall(function() setclipboard(KEYLINK) end); msglabel.TextColor3 = Color3.fromRGB(80,180,255); msglabel.Text = "Link Discord copiado!" end)
-
--- ===== Floating button JL Hub =====
-local showGui = Instance.new("ScreenGui", cg); showGui.Name = "JLHubShowBtn"; showGui.IgnoreGuiInset = true
-local showBtn = Instance.new("TextButton", showGui)
-showBtn.Size = ISMobile and UDim2.new(0,110,0,40) or UDim2.new(0,136,0,46)
-showBtn.Position = ISMobile and UDim2.new(1,-140,0,20) or UDim2.new(0,20,0.38,0)
-showBtn.Text = "JL Hub"; showBtn.Font = Enum.Font.GothamBlack; showBtn.TextSize = ISMobile and 16 or 20
-showBtn.TextColor3 = Color3.fromRGB(90,170,255); showBtn.BackgroundColor3 = Color3.fromRGB(12,12,14)
-Instance.new("UICorner", showBtn).CornerRadius = UDim.new(0,10)
-
-local draggingBtn, dxBtn, dyBtn = false, 0, 0
-showBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        draggingBtn = true
-        dxBtn = input.Position.X - showBtn.Position.X.Offset
-        dyBtn = input.Position.Y - showBtn.Position.Y.Offset
+local function new(class, props)
+    local inst = Instance.new(class)
+    if props then
+        for k,v in pairs(props) do
+            if k == "Parent" then inst.Parent = v else pcall(function() inst[k] = v end) end
+        end
     end
-end)
-UIS.InputChanged:Connect(function(input)
-    if draggingBtn and (input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch) then
-        local x = input.Position.X - dxBtn
-        local y = input.Position.Y - dyBtn
-        showBtn.Position = UDim2.new(0, clamp(x,0,W-showBtn.Size.X.Offset), 0, clamp(y,0,H-showBtn.Size.Y.Offset))
+    return inst
+end
+
+local function makeDebounced(fn, delay)
+    delay = delay or 0.12
+    local busy = false
+    return function(...)
+        if busy then return end
+        busy = true
+        local ok,err = pcall(fn,...)
+        busy = false
+        if not ok then warn("Debounced error:", err) end
     end
-end)
-UIS.InputEnded:Connect(function(input) if draggingBtn then draggingBtn = false end end)
+end
 
--- hub GUI var
-local hubGui = nil
+-- persistence helpers (Player attributes)
+local function saveToggle(key, value)
+    pcall(function() LocalPlayer:SetAttribute("JL_"..key, value and true or false) end)
+end
+local function loadToggle(key)
+    local v = LocalPlayer:GetAttribute("JL_"..key)
+    if v == nil then return false end
+    return v
+end
+local function saveNumber(key, value)
+    pcall(function() LocalPlayer:SetAttribute("JL_"..key, tonumber(value) or 0) end)
+end
+local function loadNumber(key, default)
+    local v = LocalPlayer:GetAttribute("JL_"..key)
+    if type(v) == "number" then return v end
+    return default or 0
+end
 
--- ===== Build Hub (full-screen, Redz-style look) =====
-local function buildHub()
-    if hubGui and hubGui.Parent then hubGui:Destroy() end
-    hubGui = Instance.new("ScreenGui", cg); hubGui.Name = "JLHubMain"; hubGui.IgnoreGuiInset = true; hubGui.ResetOnSpawn = false
+-- Floating button
+local function buildFloatButton()
+    local existing = CoreGui:FindFirstChild("JLHubShowBtn")
+    if existing then pcall(function() existing:Destroy() end) end
+    local sg = Instance.new("ScreenGui", CoreGui); sg.Name = "JLHubShowBtn"; sg.IgnoreGuiInset = true; sg.ResetOnSpawn = false
+    local btn = new("TextButton", {
+        Parent = sg,
+        Size = IS_MOBILE and UDim2.new(0,110,0,40) or UDim2.new(0,136,0,46),
+        Position = IS_MOBILE and UDim2.new(1,-140,0,20) or UDim2.new(0,20,0.38,0),
+        BackgroundColor3 = Color3.fromRGB(12,12,14),
+        Text = "JL Hub",
+        Font = Enum.Font.GothamBlack,
+        TextColor3 = Color3.fromRGB(90,170,255),
+        TextSize = IS_MOBILE and 16 or 20,
+    })
+    new("UICorner", {Parent = btn, CornerRadius = UDim.new(0,10)})
+    -- draggable
+    local dragging=false; local dx,dy=0,0
+    btn.InputBegan:Connect(function(input)
+        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
+            dragging=true; dx=input.Position.X-btn.Position.X.Offset; dy=input.Position.Y-btn.Position.Y.Offset
+        end
+    end)
+    UIS.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch) then
+            local x = input.Position.X-dx; local y = input.Position.Y-dy
+            btn.Position = UDim2.new(0, clamp(x,0,workspace.CurrentCamera.ViewportSize.X-btn.Size.X.Offset), 0, clamp(y,0,workspace.CurrentCamera.ViewportSize.Y-btn.Size.Y.Offset))
+        end
+    end)
+    UIS.InputEnded:Connect(function(input) if dragging then dragging=false end end)
 
-    -- background tree image (black-blue tint)
-    local bg = Instance.new("ImageLabel", hubGui)
-    bg.Name = "BackgroundTree"; bg.Image = "rbxassetid://14924794312"
-    bg.Size = UDim2.new(1,0,1,0); bg.Position = UDim2.new(0,0,0,0); bg.BackgroundTransparency = 1; bg.ImageTransparency = 0.72
-    local overlay = Instance.new("Frame", hubGui); overlay.Size = UDim2.new(1,0,1,0); overlay.BackgroundColor3 = Color3.fromRGB(8,10,12); overlay.BackgroundTransparency = 0.28
+    return sg, btn
+end
 
-    -- main container
-    local hub = Instance.new("Frame", hubGui); hub.Name = "HubContainer"; hub.Size = UDim2.new(1,-40,1,-40); hub.Position = UDim2.new(0,20,0,20)
-    hub.BackgroundColor3 = Color3.fromRGB(8,10,14); hub.BorderSizePixel = 0; Instance.new("UICorner", hub).CornerRadius = UDim.new(0,12)
+-- Build Key GUI
+local function buildKeyGui(onSuccess)
+    local existing = CoreGui:FindFirstChild("JLHubKey")
+    if existing then pcall(function() existing:Destroy() end) end
+    local kg = Instance.new("ScreenGui", CoreGui); kg.Name = "JLHubKey"; kg.IgnoreGuiInset = true; kg.ResetOnSpawn = false
+    local frame = new("Frame", {Parent = kg, AnchorPoint = Vector2.new(0.5,0.5), Position = UDim2.new(0.5,0,0.5,0),
+        Size = IS_MOBILE and UDim2.new(0,320,0,170) or UDim2.new(0,420,0,210), BackgroundColor3 = Color3.fromRGB(18,20,22)})
+    new("UICorner", {Parent = frame, CornerRadius = UDim.new(0,12)})
+    new("TextLabel", {Parent = frame, Size = UDim2.new(1,0,0,44), Position = UDim2.new(0,0,0,0), BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBlack, Text = "🔑 JL Hub - Key", TextColor3 = Color3.fromRGB(90,170,255), TextSize = IS_MOBILE and 16 or 22})
+    new("TextLabel", {Parent = frame, Size = UDim2.new(1,-28,0,36), Position = UDim2.new(0,14,0,46), BackgroundTransparency = 1,
+        Font = Enum.Font.Gotham, Text = "Cole a key do Discord e pressione Entrar", TextColor3 = Color3.fromRGB(200,220,240), TextXAlignment = Enum.TextXAlignment.Left})
 
-    -- title bar
-    local titleBar = Instance.new("Frame", hub); titleBar.Size = UDim2.new(1,0,0,72); titleBar.BackgroundTransparency = 1
-    local titleLabel = Instance.new("TextLabel", titleBar); titleLabel.Position = UDim2.new(0,20,0,12)
-    titleLabel.Size = UDim2.new(0.6,0,1,0); titleLabel.BackgroundTransparency = 1
-    titleLabel.Font = Enum.Font.GothamBlack; titleLabel.Text = "JL Hub"; titleLabel.TextColor3 = Color3.fromRGB(90,170,255)
-    titleLabel.TextSize = ISMobile and 20 or 34; titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    local input = new("TextBox", {Parent = frame, Size = IS_MOBILE and UDim2.new(1,-28,0,34) or UDim2.new(1,-36,0,40),
+        Position = UDim2.new(0,14,0,84), BackgroundColor3 = Color3.fromRGB(14,16,18), TextColor3 = Color3.fromRGB(220,240,255), Font = Enum.Font.Gotham, PlaceholderText = "Digite sua Key..."})
+    new("UICorner", {Parent = input, CornerRadius = UDim.new(0,8)})
+    local msg = new("TextLabel", {Parent = frame, Size = UDim2.new(1,-28,0,18), Position = UDim2.new(0,14,0,130), BackgroundTransparency = 1, Font = Enum.Font.Gotham, TextColor3 = Color3.fromRGB(255,100,100)})
+    local enterBtn = new("TextButton", {Parent = frame, Size = UDim2.new(0.44,0,0,36), Position = UDim2.new(0.06,0,1,-46), BackgroundColor3 = Color3.fromRGB(20,160,100), Font = Enum.Font.GothamBold, Text = "Entrar", TextColor3 = Color3.fromRGB(240,240,240)})
+    new("UICorner", {Parent = enterBtn, CornerRadius = UDim.new(0,8)})
+    local getBtn = new("TextButton", {Parent = frame, Size = enterBtn.Size, Position = UDim2.new(0.5,8,1,enterBtn.Position.Y.Offset), BackgroundColor3 = Color3.fromRGB(40,80,200), Font = Enum.Font.GothamBold, Text = "Pegar Key", TextColor3 = Color3.fromRGB(240,240,255)})
+    new("UICorner", {Parent = getBtn, CornerRadius = UDim.new(0,8)})
 
-    local squareBtn = Instance.new("TextButton", titleBar); squareBtn.Size = ISMobile and UDim2.new(0,56,0,40) or UDim2.new(0,84,0,48)
-    squareBtn.Position = UDim2.new(1,-(ISMobile and 80 or 110),0,12); squareBtn.BackgroundColor3 = Color3.fromRGB(6,8,10)
-    squareBtn.Text = "JL Hub"; squareBtn.Font = Enum.Font.GothamBlack; squareBtn.TextColor3 = Color3.fromRGB(90,170,255)
-    Instance.new("UICorner", squareBtn).CornerRadius = UDim.new(0,8)
-    squareBtn.MouseButton1Click:Connect(function() hub.Visible = not hub.Visible end)
+    getBtn.MouseButton1Click:Connect(function()
+        pcall(function() setclipboard(KEYLINK) end)
+        msg.TextColor3 = Color3.fromRGB(80,180,255); msg.Text = "Link Discord copiado!"
+    end)
 
-    -- left categories column and right content
-    local leftW = ISMobile and 160 or 220
-    local leftCol = Instance.new("Frame", hub); leftCol.Size = UDim2.new(0,leftW,1,-titleBar.Size.Y.Offset-24)
-    leftCol.Position = UDim2.new(0,12,0,titleBar.Size.Y.Offset+12); leftCol.BackgroundColor3 = Color3.fromRGB(10,12,16); Instance.new("UICorner", leftCol).CornerRadius = UDim.new(0,10)
-    local rightCol = Instance.new("Frame", hub); rightCol.Size = UDim2.new(1,-(leftW+48),1,-titleBar.Size.Y.Offset-24)
-    rightCol.Position = UDim2.new(0,leftW+24,0,titleBar.Size.Y.Offset+12); rightCol.BackgroundColor3 = Color3.fromRGB(14,16,20); Instance.new("UICorner", rightCol).CornerRadius = UDim.new(0,10)
+    enterBtn.MouseButton1Click:Connect(function()
+        if tostring(input.Text or "") == KEY then
+            msg.TextColor3 = Color3.fromRGB(120,255,160); msg.Text = "Key correta! Abrindo hub..."
+            wait(0.2)
+            pcall(function() kg:Destroy() end)
+            if onSuccess then onSuccess() end
+        else
+            msg.TextColor3 = Color3.fromRGB(255,100,100); msg.Text = "Key incorreta! Pegue no Discord."
+        end
+    end)
 
-    local categories = {
-        "Main", "Combat", "Player", "Teleports", "Visuals", "Misc", "Settings"
-    }
-    local activeCat = categories[1]
+    input.FocusLost:Connect(function(enter)
+        if enter then enterBtn.MouseButton1Click:Wait() end
+    end)
+
+    return kg
+end
+
+-- Main hub builder
+local function buildMainHub()
+    -- cleanup if existing
+    local existing = CoreGui:FindFirstChild("JLHubMain")
+    if existing then pcall(function() existing:Destroy() end) end
+
+    local sg = Instance.new("ScreenGui", CoreGui); sg.Name = "JLHubMain"; sg.IgnoreGuiInset = true; sg.ResetOnSpawn = false
+
+    -- bg tree + overlay
+    local bg = new("ImageLabel", {Parent = sg, Image = BG_ASSET, Size = UDim2.new(1,0,1,0), BackgroundTransparency = 1})
+    bg.ImageTransparency = 0.72
+    local overlay = new("Frame", {Parent = sg, Size = UDim2.new(1,0,1,0), BackgroundColor3 = Color3.fromRGB(8,10,12), BackgroundTransparency = 0.28})
+
+    -- container
+    local container = new("Frame", {Parent = sg, Size = UDim2.new(1,-40,1,-40), Position = UDim2.new(0,20,0,20), BackgroundColor3 = Color3.fromRGB(8,10,14)})
+    new("UICorner", {Parent = container, CornerRadius = UDim.new(0,12)})
+
+    -- title bar + square
+    local titleBar = new("Frame", {Parent = container, Size = UDim2.new(1,0,0,72), BackgroundTransparency = 1})
+    local titleLabel = new("TextLabel", {Parent = titleBar, Position = UDim2.new(0,20,0,12), Size = UDim2.new(0.6,0,1,0), BackgroundTransparency = 1, Font = Enum.Font.GothamBlack, Text = "JL Hub", TextColor3 = Color3.fromRGB(90,170,255), TextSize = IS_MOBILE and 20 or 34, TextXAlignment = Enum.TextXAlignment.Left})
+    local squareBtn = new("TextButton", {Parent = titleBar, Size = IS_MOBILE and UDim2.new(0,56,0,40) or UDim2.new(0,84,0,48), Position = UDim2.new(1,-(IS_MOBILE and 80 or 110),0,12), BackgroundColor3 = Color3.fromRGB(6,8,10), Text = "JL Hub", Font = Enum.Font.GothamBlack, TextColor3 = Color3.fromRGB(90,170,255)})
+    new("UICorner", {Parent = squareBtn, CornerRadius = UDim.new(0,8)})
+
+    -- layout columns
+    local leftW = IS_MOBILE and 160 or 220
+    local leftCol = new("Frame", {Parent = container, Size = UDim2.new(0,leftW,1,-titleBar.Size.Y.Offset-24), Position = UDim2.new(0,12,0,titleBar.Size.Y.Offset+12), BackgroundColor3 = Color3.fromRGB(10,12,16)})
+    new("UICorner", {Parent = leftCol, CornerRadius = UDim.new(0,10)})
+    local rightCol = new("Frame", {Parent = container, Size = UDim2.new(1,-(leftW+48),1,-titleBar.Size.Y.Offset-24), Position = UDim2.new(0,leftW+24,0,titleBar.Size.Y.Offset+12), BackgroundColor3 = Color3.fromRGB(14,16,20)})
+    new("UICorner", {Parent = rightCol, CornerRadius = UDim.new(0,10)})
+
+    local leftLayout = new("UIListLayout", {Parent = leftCol, Padding = UDim.new(0,8), SortOrder = Enum.SortOrder.LayoutOrder})
+    leftLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+    -- categories in left column as the user asked (Main at top)
+    local categories = {"Main","Player","Raid|Fruta","Settings"}
+    local current = categories[1]
+
     local function clearRight()
-        for _,c in ipairs(rightCol:GetChildren()) do if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then c:Destroy() end end
+        for _,c in ipairs(rightCol:GetChildren()) do
+            if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then pcall(function() c:Destroy() end) end
+        end
     end
 
-    local function makeToggle(parent, labelText, callback)
-        local row = Instance.new("Frame", parent); row.Size = UDim2.new(1,-28,0, ISMobile and 64 or 48); row.BackgroundTransparency = 1
-        local lbl = Instance.new("TextLabel", row); lbl.Position = UDim2.new(0,12,0,0); lbl.Size = UDim2.new(0.66,0,1,0)
-        lbl.BackgroundTransparency = 1; lbl.Font = Enum.Font.GothamBold; lbl.TextSize = ISMobile and 18 or 16; lbl.TextColor3 = Color3.fromRGB(230,230,230)
-        lbl.Text = labelText; lbl.TextXAlignment = Enum.TextXAlignment.Left
-        local tbtn = Instance.new("TextButton", row); tbtn.Size = ISMobile and UDim2.new(0,86,0,40) or UDim2.new(0.26,0,0,34)
-        tbtn.Position = UDim2.new(1,-(ISMobile and 96 or 12) - tbtn.Size.X.Offset,0,(row.Size.Y.Offset - tbtn.Size.Y.Offset)/2)
-        tbtn.Font = Enum.Font.GothamBold; tbtn.TextSize = ISMobile and 16 or 16; tbtn.Text = "OFF"; tbtn.TextColor3 = Color3.fromRGB(240,240,240)
-        tbtn.BackgroundColor3 = Color3.fromRGB(60,64,70); Instance.new("UICorner", tbtn).CornerRadius = UDim.new(0,8)
-        local state = false
-        local function set(s)
-            state = s
+    -- Helper to create toggle row (with persistence)
+    local function createToggleRow(parent, key, labelText, callback)
+        local row = new("Frame", {Parent = parent, Size = UDim2.new(1,-28,0, IS_MOBILE and 64 or 48), BackgroundTransparency = 1})
+        local lbl = new("TextLabel", {Parent = row, Position = UDim2.new(0,12,0,0), Size = UDim2.new(0.66,0,1,0), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = IS_MOBILE and 18 or 16, TextColor3 = Color3.fromRGB(230,230,230), Text = labelText, TextXAlignment = Enum.TextXAlignment.Left})
+        local tbtn = new("TextButton", {Parent = row, Size = IS_MOBILE and UDim2.new(0,86,0,40) or UDim2.new(0.26,0,0,34), BackgroundColor3 = Color3.fromRGB(60,64,70), Font = Enum.Font.GothamBold, Text = "OFF", TextColor3 = Color3.fromRGB(240,240,240)})
+        new("UICorner", {Parent = tbtn, CornerRadius = UDim.new(0,8)})
+        tbtn.Position = UDim2.new(1, - (IS_MOBILE and 96 or 12) - tbtn.Size.X.Offset, 0, (row.Size.Y.Offset - tbtn.Size.Y.Offset)/2)
+
+        -- persistence
+        local state = loadToggle(key)
+        local function apply(v)
+            state = v and true or false
+            saveToggle(key, state)
             if state then tbtn.BackgroundColor3 = Color3.fromRGB(12,180,100); tbtn.Text = "ON" else tbtn.BackgroundColor3 = Color3.fromRGB(60,64,70); tbtn.Text = "OFF" end
             if callback then pcall(callback, state) end
         end
-        tbtn.MouseButton1Click:Connect(function() set(not state) end)
-        return row
+        apply(state)
+        tbtn.MouseButton1Click:Connect(makeDebounced(function() apply(not state) end))
+        return row, function() return state end, apply
     end
 
-    local function populate(name)
+    -- UI components for each category content
+    local runningSimulations = {} -- store coroutines to allow stop
+
+    local function populateMain()
         clearRight()
-        local scroll = Instance.new("ScrollingFrame", rightCol); scroll.Name = "ContentScroll"; scroll.Size = UDim2.new(1,-24,1,-24)
-        scroll.Position = UDim2.new(0,12,0,12); scroll.BackgroundTransparency = 1; scroll.ScrollBarThickness = 8; scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-        local layout = Instance.new("UIListLayout", scroll); layout.Padding = UDim.new(0,12); layout.SortOrder = Enum.SortOrder.LayoutOrder
+        local scroll = new("ScrollingFrame", {Parent = rightCol, Size = UDim2.new(1,-24,1,-24), Position = UDim2.new(0,12,0,12), BackgroundTransparency = 1, ScrollBarThickness = 8, AutomaticCanvasSize = Enum.AutomaticSize.Y})
+        local layout = new("UIListLayout", {Parent = scroll, Padding = UDim.new(0,12), SortOrder = Enum.SortOrder.LayoutOrder})
 
-        if name == "Main" then
-            makeToggle(scroll, "AUTO FARM", function(s) Notify("AUTO FARM (simulado): " .. (s and "ON" or "OFF")) end).LayoutOrder = 1
-            makeToggle(scroll, "AUTO BOSS", function(s) Notify("AUTO BOSS (simulado): " .. (s and "ON" or "OFF")) end).LayoutOrder = 2
-            makeToggle(scroll, "AUTO BUY (simulado)", function(s) Notify("AUTO BUY (simulado): " .. (s and "ON" or "OFF")) end).LayoutOrder = 3
-            local info = Instance.new("TextLabel", scroll); info.Size = UDim2.new(1,-28,0,68); info.BackgroundTransparency = 1
-            info.Font = Enum.Font.Gotham; info.TextSize = 14; info.TextColor3 = Color3.fromRGB(190,200,230)
-            info.Text = "Main contains farm automation placeholders (UI-only). Replace with authorized server APIs if you manage the game."; info.LayoutOrder = 4
-
-        elseif name == "Combat" then
-            makeToggle(scroll, "ESP (UI list)", function(s) Notify("ESP (UI-only): " .. (s and "ON" or "OFF")) end).LayoutOrder = 1
-            makeToggle(scroll, "AIMBOT (crosshair visual)", function(s) Notify("AIMBOT visual: " .. (s and "ON" or "OFF")) end).LayoutOrder = 2
-            makeToggle(scroll, "SILENT AIM (placeholder)", function(s) Notify("SILENT AIM (placeholder) " .. (s and "ON" or "OFF")) end).LayoutOrder = 3
-            makeToggle(scroll, "AUTO HAKI", function(s) Notify("AUTO HAKI (simulado): " .. (s and "ON" or "OFF")) end).LayoutOrder = 4
-
-        elseif name == "Player" then
-            makeToggle(scroll, "WALK SPEED (UI adjust only)", function(s) Notify("WalkSpeed adjust (UI-only): " .. (s and "APPLIED" or "RESET")) end).LayoutOrder = 1
-            makeToggle(scroll, "JUMP POWER (UI adjust only)", function(s) Notify("JumpPower adjust (UI-only): " .. (s and "APPLIED" or "RESET")) end).LayoutOrder = 2
-            makeToggle(scroll, "NO CLIP (placeholder)", function(s) Notify("NO CLIP (placeholder): " .. (s and "ENABLED" or "DISABLED")) end).LayoutOrder = 3
-
-        elseif name == "Teleports" then
-            -- only dropdown/button UI; no teleport action
-            local islands = {"Starter","Second","Third","Fourth","BossIsland"}
-            local idx = 1
-            local row = Instance.new("Frame", scroll); row.Size = UDim2.new(1,-28,0,56); row.BackgroundTransparency = 1; row.LayoutOrder = 1
-            local lbl = Instance.new("TextLabel", row); lbl.Size = UDim2.new(0.6,0,1,0); lbl.Position = UDim2.new(0,12,0,0)
-            lbl.BackgroundTransparency = 1; lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 16; lbl.TextColor3 = Color3.fromRGB(230,230,230)
-            lbl.Text = "Ilha: " .. islands[idx]; lbl.TextXAlignment = Enum.TextXAlignment.Left
-            local btn = Instance.new("TextButton", row); btn.Size = ISMobile and UDim2.new(0,86,0,40) or UDim2.new(0.26,0,0,34)
-            btn.Position = UDim2.new(1,-(ISMobile and 96 or 12) - btn.Size.X.Offset,0,(row.Size.Y.Offset - btn.Size.Y.Offset)/2)
-            btn.BackgroundColor3 = Color3.fromRGB(60,70,100); btn.Font = Enum.Font.GothamBold; btn.TextColor3 = Color3.fromRGB(240,240,255); btn.Text = "Próxima"
-            Instance.new("UICorner", btn).CornerRadius = UDim.new(0,8)
-            btn.MouseButton1Click:Connect(function() idx = idx + 1; if idx > #islands then idx = 1 end; lbl.Text = "Ilha: " .. islands[idx]; Notify("Ilha selecionada: " .. islands[idx] .. " (sem teleporte)") end)
-
-            makeToggle(scroll, "Teleport to Boss (placeholder)", function(s) Notify("Teleport (placeholder): " .. (s and "ON" or "OFF")) end).LayoutOrder = 2
-
-        elseif name == "Visuals" then
-            makeToggle(scroll, "Name ESP (UI)", function(s) Notify("Name ESP (UI): " .. (s and "ON" or "OFF")) end).LayoutOrder = 1
-            makeToggle(scroll, "Tracers (UI)", function(s) Notify("Tracers (UI): " .. (s and "ON" or "OFF")) end).LayoutOrder = 2
-            makeToggle(scroll, "Chams (UI)", function(s) Notify("Chams (UI): " .. (s and "ON" or "OFF")) end).LayoutOrder = 3
-
-        elseif name == "Misc" then
-            makeToggle(scroll, "ANTI AFK (simulado)", function(s) Notify("ANTI AFK (simulado): " .. (s and "ON" or "OFF")) end).LayoutOrder = 1
-            makeToggle(scroll, "Auto Rebirth (placeholder)", function(s) Notify("Auto Rebirth (placeholder): " .. (s and "ON" or "OFF")) end).LayoutOrder = 2
-            makeToggle(scroll, "Auto Collect (placeholder)", function(s) Notify("Auto Collect (placeholder): " .. (s and "ON" or "OFF")) end).LayoutOrder = 3
-
-        elseif name == "Settings" then
-            makeToggle(scroll, "Mostrar Overlay", function(s) overlay.Visible = s; Notify("Overlay " .. (s and "visível" or "oculto")) end).LayoutOrder = 1
-            local closeBtn = Instance.new("TextButton", scroll); closeBtn.Size = UDim2.new(1,-28,0,40)
-            closeBtn.BackgroundColor3 = Color3.fromRGB(80,80,90); closeBtn.Font = Enum.Font.GothamBold; closeBtn.Text = "Fechar Hub"
-            closeBtn.TextColor3 = Color3.fromRGB(240,240,240); Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0,8)
-            closeBtn.LayoutOrder = 2
-            closeBtn.MouseButton1Click:Connect(function() hubGui:Destroy() end)
+        -- Auto Farm row + selector Sword/Fist above it (user asked "em cima do auto farm vai poder escolher entre espada ou soco")
+        local selectorFrame = new("Frame", {Parent = scroll, Size = UDim2.new(1,-28,0,48), BackgroundTransparency = 1}); selectorFrame.LayoutOrder = 1
+        local selLabel = new("TextLabel", {Parent = selectorFrame, Position = UDim2.new(0,12,0,0), Size = UDim2.new(0.5,0,1,0), BackgroundTransparency = 1, Font = Enum.Font.Gotham, Text = "Ferramenta para Farm:", TextColor3 = Color3.fromRGB(220,220,220), TextXAlignment = Enum.TextXAlignment.Left})
+        local optSword = new("TextButton", {Parent = selectorFrame, Size = UDim2.new(0,96,0,34), Position = UDim2.new(0.5, 6, 0, 7), BackgroundColor3 = Color3.fromRGB(40,40,50), Text = "Espada", Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(240,240,240)})
+        local optFist = new("TextButton", {Parent = selectorFrame, Size = UDim2.new(0,96,0,34), Position = UDim2.new(0.5, 110, 0, 7), BackgroundColor3 = Color3.fromRGB(40,40,50), Text = "Soco", Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(240,240,240)})
+        new("UICorner", {Parent=optSword, CornerRadius = UDim.new(0,8)}); new("UICorner", {Parent=optFist, CornerRadius = UDim.new(0,8)})
+        -- persistence for selected tool
+        local selTool = LocalPlayer:GetAttribute("JL_Main_Tool") or "Espada"
+        local function updateToolVisual()
+            optSword.BackgroundColor3 = (selTool=="Espada") and Color3.fromRGB(35,72,120) or Color3.fromRGB(40,40,50)
+            optFist.BackgroundColor3 = (selTool=="Soco") and Color3.fromRGB(35,72,120) or Color3.fromRGB(40,40,50)
         end
+        updateToolVisual()
+        optSword.MouseButton1Click:Connect(function() selTool="Espada"; pcall(function() LocalPlayer:SetAttribute("JL_Main_Tool", selTool) end); updateToolVisual(); notify("Selecionado: Espada (UI-only)") end)
+        optFist.MouseButton1Click:Connect(function() selTool="Soco"; pcall(function() LocalPlayer:SetAttribute("JL_Main_Tool", selTool) end); updateToolVisual(); notify("Selecionado: Soco (UI-only)") end)
+
+        -- Auto Farm toggle (simulado counter)
+        local farmRow, farmGetState, farmApply = createToggleRow(scroll, "Main_AutoFarm", "AUTO FARM", function(s)
+            if s then
+                -- start simulated farm counter
+                if runningSimulations.farm then return end
+                runningSimulations.farm = true
+                spawn(function()
+                    local count = LocalPlayer:GetAttribute("JL_Main_FarmCount") or 0
+                    while runningSimulations.farm and LocalPlayer:GetAttribute("JL_Main_AutoFarm") do
+                        count = count + 1
+                        pcall(function() LocalPlayer:SetAttribute("JL_Main_FarmCount", count) end)
+                        -- update small on-screen indicator
+                        notify("AutoFarm (simulado) - kills: "..tostring(count))
+                        wait(1.2)
+                    end
+                end)
+            else
+                runningSimulations.farm = false
+                notify("AutoFarm (simulado) parado.")
+            end
+        end)
+        farmRow.LayoutOrder = 2
+
+        -- Auto Boss
+        local bossRow, bossGetState, bossApply = createToggleRow(scroll, "Main_AutoBoss", "AUTO BOSS", function(s)
+            if s then notify("Auto Boss (simulado) ligado.") else notify("Auto Boss (simulado) desligado.") end
+        end)
+        bossRow.LayoutOrder = 3
+
+        -- Auto Mastery (with selector Fruit|Gun)
+        local masteryFrame = new("Frame", {Parent = scroll, Size = UDim2.new(1,-28,0,48), BackgroundTransparency = 1}); masteryFrame.LayoutOrder = 4
+        local masteryLbl = new("TextLabel", {Parent = masteryFrame, Position = UDim2.new(0,12,0,0), Size = UDim2.new(0.5,0,1,0), BackgroundTransparency = 1, Font = Enum.Font.Gotham, Text = "Auto Mastery target:", TextColor3 = Color3.fromRGB(220,220,220), TextXAlignment = Enum.TextXAlignment.Left})
+        local optFruit = new("TextButton", {Parent = masteryFrame, Size = UDim2.new(0,96,0,34), Position = UDim2.new(0.5, 6, 0, 7), BackgroundColor3 = Color3.fromRGB(40,40,50), Text = "Fruit", Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(240,240,240)})
+        local optGun = new("TextButton", {Parent = masteryFrame, Size = UDim2.new(0,96,0,34), Position = UDim2.new(0.5, 110, 0, 7), BackgroundColor3 = Color3.fromRGB(40,40,50), Text = "Gun", Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(240,240,240)})
+        new("UICorner", {Parent=optFruit, CornerRadius=UDim.new(0,8)}); new("UICorner", {Parent=optGun, CornerRadius=UDim.new(0,8)})
+        local masteryTarget = LocalPlayer:GetAttribute("JL_Main_MasteryTarget") or "Fruit"
+        local function updateMasteryVisual()
+            optFruit.BackgroundColor3 = (masteryTarget=="Fruit") and Color3.fromRGB(35,72,120) or Color3.fromRGB(40,40,50)
+            optGun.BackgroundColor3 = (masteryTarget=="Gun") and Color3.fromRGB(35,72,120) or Color3.fromRGB(40,40,50)
+        end
+        updateMasteryVisual()
+        optFruit.MouseButton1Click:Connect(function() masteryTarget="Fruit"; pcall(function() LocalPlayer:SetAttribute("JL_Main_MasteryTarget", masteryTarget) end); updateMasteryVisual(); notify("Mastery target: Fruit (UI-only)") end)
+        optGun.MouseButton1Click:Connect(function() masteryTarget="Gun"; pcall(function() LocalPlayer:SetAttribute("JL_Main_MasteryTarget", masteryTarget) end); updateMasteryVisual(); notify("Mastery target: Gun (UI-only)") end)
+
+        -- Auto Mastery toggle
+        local masteryRow, mGetState, mApply = createToggleRow(scroll, "Main_AutoMastery", "AUTO MASTERY", function(s)
+            if s then
+                notify("Auto Mastery (simulado) ligado para "..(LocalPlayer:GetAttribute("JL_Main_MasteryTarget") or "Fruit"))
+                -- simulate progress
+                if runningSimulations.mastery then return end
+                runningSimulations.mastery = true
+                spawn(function()
+                    local prog = LocalPlayer:GetAttribute("JL_Main_MasteryProgress") or 0
+                    while runningSimulations.mastery and LocalPlayer:GetAttribute("JL_Main_AutoMastery") do
+                        prog = prog + math.random(2,6)
+                        pcall(function() LocalPlayer:SetAttribute("JL_Main_MasteryProgress", clamp(prog,0,100)) end)
+                        notify("Mastery (simulado): "..tostring(clamp(prog,0,100)).."%")
+                        if prog >= 100 then
+                            notify("Mastery target atingido (simulado).")
+                            break
+                        end
+                        wait(2)
+                    end
+                    runningSimulations.mastery = false
+                end)
+            else
+                runningSimulations.mastery = false
+                notify("Auto Mastery (simulado) desligado.")
+            end
+        end)
+        masteryRow.LayoutOrder = 5
     end
 
-    -- create left category buttons
-    for i,cat in ipairs(categories) do
-        local btn = Instance.new("TextButton", leftCol)
-        btn.Name = "Cat_"..cat; btn.Size = UDim2.new(1,-18,0, ISMobile and 56 or 48); btn.Position = UDim2.new(0,9,0,0)
-        btn.BackgroundColor3 = (cat==activeCat) and Color3.fromRGB(35,72,120) or Color3.fromRGB(18,20,24)
-        btn.Font = Enum.Font.GothamBold; btn.Text = cat; btn.TextColor3 = Color3.fromRGB(220,230,255)
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0,8); btn.LayoutOrder = i
-        btn.MouseButton1Click:Connect(function()
-            for _,c in pairs(leftCol:GetChildren()) do if c:IsA("TextButton") then c.BackgroundColor3 = Color3.fromRGB(18,20,24) end end
-            btn.BackgroundColor3 = Color3.fromRGB(35,72,120)
-            activeCat = cat
-            populate(cat)
+    local function populatePlayer()
+        clearRight()
+        local scroll = new("ScrollingFrame", {Parent = rightCol, Size = UDim2.new(1,-24,1,-24), Position = UDim2.new(0,12,0,12), BackgroundTransparency = 1, ScrollBarThickness = 8, AutomaticCanvasSize = Enum.AutomaticSize.Y})
+        local layout = new("UIListLayout", {Parent = scroll, Padding = UDim.new(0,12), SortOrder = Enum.SortOrder.LayoutOrder})
+
+        -- AIMBOT (visual crosshair)
+        local aimbotRow, aGet, aApply = createToggleRow(scroll, "Player_Aimbot", "AIMBOT (crosshair visual)", function(s)
+            -- show/hide crosshair UI-only
+            local existing = CoreGui:FindFirstChild("JL_AimCross")
+            if s then
+                if existing then existing.Enabled = true else
+                    local cross = Instance.new("ScreenGui", CoreGui); cross.Name = "JL_AimCross"; cross.IgnoreGuiInset = true
+                    local dot = new("Frame", {Parent = cross, Size = UDim2.new(0,6,0,6), Position = UDim2.new(0.5,-3,0.5,-3), BackgroundColor3 = Color3.fromRGB(255,80,80)})
+                    new("UICorner", {Parent = dot, CornerRadius = UDim.new(1,0)})
+                end
+                notify("Aimbot visual ligado (UI-only).")
+            else
+                if existing then existing.Enabled = false end
+                notify("Aimbot visual desligado.")
+            end
         end)
+        aimbotRow.LayoutOrder = 1
+
+        -- ESP Players (UI list)
+        local espPlayersRow, epGet, epApply = createToggleRow(scroll, "Player_ESPPlayers", "ESP PLAYERS (lista)", function(s)
+            local listName = "JL_ESP_PlayersList"
+            local existing = CoreGui:FindFirstChild(listName)
+            if s then
+                if existing then existing.Enabled = true else
+                    local sg = Instance.new("ScreenGui", CoreGui); sg.Name = listName; sg.IgnoreGuiInset = true
+                    local frame = new("Frame", {Parent = sg, Size = UDim2.new(0,220,0,200), Position = IS_MOBILE and UDim2.new(0,8,1,-220) or UDim2.new(1,-240,0.12,0), BackgroundColor3 = Color3.fromRGB(12,12,16)})
+                    new("UICorner", {Parent = frame, CornerRadius = UDim.new(0,8)})
+                    new("TextLabel", {Parent = frame, Size = UDim2.new(1,0,0,28), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, Text = "ESP Players (UI)", TextColor3 = Color3.fromRGB(200,220,255)})
+                    local scroll = new("ScrollingFrame", {Parent = frame, Size = UDim2.new(1,-12,1,-36), Position = UDim2.new(0,6,0,30), BackgroundTransparency = 1, ScrollBarThickness = 6})
+                    local layout = new("UIListLayout", {Parent = scroll, Padding = UDim.new(0,6)})
+                    -- fill with current players (UI-only)
+                    for _,p in ipairs(Players:GetPlayers()) do
+                        if p ~= LocalPlayer then
+                            new("TextLabel", {Parent = scroll, Size = UDim2.new(1,-6,0,20), BackgroundTransparency = 1, Font = Enum.Font.Gotham, Text = p.Name, TextColor3 = Color3.fromRGB(230,230,230), TextXAlignment = Enum.TextXAlignment.Left})
+                        end
+                    end
+                end
+                notify("ESP Players (UI) ativado.")
+            else
+                if existing then pcall(function() existing:Destroy() end) end
+                notify("ESP Players (UI) desativado.")
+            end
+        end)
+        espPlayersRow.LayoutOrder = 2
+
+        -- ESP Fruits (UI list)
+        local espFruitRow, efGet, efApply = createToggleRow(scroll, "Player_ESPFruit", "ESP FRUTAS (lista)", function(s)
+            local listName = "JL_ESP_FruitList"
+            local existing = CoreGui:FindFirstChild(listName)
+            if s then
+                if existing then existing.Enabled = true else
+                    local sg = Instance.new("ScreenGui", CoreGui); sg.Name = listName; sg.IgnoreGuiInset = true
+                    local frame = new("Frame", {Parent = sg, Size = UDim2.new(0,220,0,150), Position = IS_MOBILE and UDim2.new(0,8,1,-380) or UDim2.new(1,-240,0.28,0), BackgroundColor3 = Color3.fromRGB(12,12,16)})
+                    new("UICorner", {Parent = frame, CornerRadius = UDim.new(0,8)})
+                    new("TextLabel", {Parent = frame, Size = UDim2.new(1,0,0,28), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, Text = "ESP Frutas (UI)", TextColor3 = Color3.fromRGB(200,220,255)})
+                    local scroll = new("ScrollingFrame", {Parent = frame, Size = UDim2.new(1,-12,1,-36), Position = UDim2.new(0,6,0,30), BackgroundTransparency = 1, ScrollBarThickness = 6})
+                    local layout = new("UIListLayout", {Parent = scroll, Padding = UDim.new(0,6)})
+                    -- sample fruit names
+                    local sampleFruits = {"Gomu", "Suke", "Mera", "Gura", "Hie"}
+                    for _,f in ipairs(sampleFruits) do
+                        new("TextLabel", {Parent = scroll, Size = UDim2.new(1,-6,0,20), BackgroundTransparency = 1, Font = Enum.Font.Gotham, Text = f, TextColor3 = Color3.fromRGB(230,230,230), TextXAlignment = Enum.TextXAlignment.Left})
+                    end
+                end
+                notify("ESP Frutas (UI) ativado.")
+            else
+                if existing then pcall(function() existing:Destroy() end) end
+                notify("ESP Frutas (UI) desativado.")
+            end
+        end)
+        espFruitRow.LayoutOrder = 3
+    end
+
+    local function populateRaidFruta()
+        clearRight()
+        local scroll = new("ScrollingFrame", {Parent = rightCol, Size = UDim2.new(1,-24,1,-24), Position = UDim2.new(0,12,0,12), BackgroundTransparency = 1, ScrollBarThickness = 8, AutomaticCanvasSize = Enum.AutomaticSize.Y})
+        local layout = new("UIListLayout", {Parent = scroll, Padding = UDim.new(0,12), SortOrder = Enum.SortOrder.LayoutOrder})
+
+        -- Random Fruits (rotates UI-only)
+        local randRow = new("Frame", {Parent = scroll, Size = UDim2.new(1,-28,0,64), BackgroundTransparency = 1}); randRow.LayoutOrder = 1
+        local lbl = new("TextLabel", {Parent = randRow, Position = UDim2.new(0,12,0,0), Size = UDim2.new(0.66,0,1,0), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, Text = "RANDOM FRUITS (UI-only)", TextColor3 = Color3.fromRGB(230,230,230), TextXAlignment = Enum.TextXAlignment.Left})
+        local toggleBtn = new("TextButton", {Parent = randRow, Size = IS_MOBILE and UDim2.new(0,86,0,40) or UDim2.new(0.26,0,0,34), Position = UDim2.new(1,-(IS_MOBILE and 96 or 12) - 86,0,10), BackgroundColor3 = Color3.fromRGB(60,64,70), Text = "OFF", Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(240,240,240)})
+        new("UICorner", {Parent = toggleBtn, CornerRadius = UDim.new(0,8)})
+
+        -- display current rotating fruit
+        local rotLabel = new("TextLabel", {Parent = scroll, Size = UDim2.new(1,-28,0,28), BackgroundTransparency = 1, Font = Enum.Font.Gotham, TextSize = 14, TextColor3 = Color3.fromRGB(200,220,255), Text = "Próxima fruta: -"})
+        rotLabel.LayoutOrder = 2
+
+        local fruitsList = {"Gomu","Mera","Suke","Gura","Hie","Ope","Bara","Yami","Soru","Magu"}
+        local rotating = false
+        local function setToggleOn(v)
+            toggleBtn.Text = v and "ON" or "OFF"
+            toggleBtn.BackgroundColor3 = v and Color3.fromRGB(12,180,100) or Color3.fromRGB(60,64,70)
+            if v then
+                if rotating then return end
+                rotating = true
+                spawn(function()
+                    while rotating do
+                        local pick = fruitsList[math.random(1,#fruitsList)]
+                        rotLabel.Text = "Próxima fruta: "..pick.." (UI-only, sem troca automática real)"
+                        notify("Random Fruits (UI): selecionando "..pick)
+                        wait(2)
+                    end
+                end)
+                notify("Random Fruits (UI) ligado.")
+            else
+                rotating = false
+                notify("Random Fruits (UI) desligado.")
+            end
+        end
+        toggleBtn.MouseButton1Click:Connect(function() setToggleOn(toggleBtn.Text ~= "ON") end)
+
+        -- two blank spaces (vertical)
+        local spacer1 = new("Frame", {Parent = scroll, Size = UDim2.new(1,-28,0,16), BackgroundTransparency = 1}); spacer1.LayoutOrder = 3
+        local spacer2 = new("Frame", {Parent = scroll, Size = UDim2.new(1,-28,0,16), BackgroundTransparency = 1}); spacer2.LayoutOrder = 4
+
+        -- Auto Buy Chip (simulado)
+        local buyRow, buyGet, buyApply = createToggleRow(scroll, "Raid_AutoBuyChip", "AUTO BUY CHIP (simulado)", function(s)
+            if s then
+                notify("Auto Buy Chip (simulado) ligado.")
+                -- simulate purchases count
+                spawn(function()
+                    local count = LocalPlayer:GetAttribute("JL_Raid_BuyCount") or 0
+                    while LocalPlayer:GetAttribute("JL_Raid_AutoBuyChip") do
+                        count = count + 1
+                        pcall(function() LocalPlayer:SetAttribute("JL_Raid_BuyCount", count) end)
+                        notify("Auto Buy Chip (simulado) - Compras: "..tostring(count))
+                        wait(3)
+                    end
+                end)
+            else
+                notify("Auto Buy Chip (simulado) desligado.")
+            end
+        end)
+        buyRow.LayoutOrder = 5
+
+        -- Auto Raid (simulado with progress)
+        local autoRaidRow = new("Frame", {Parent = scroll, Size = UDim2.new(1,-28,0,80), BackgroundTransparency = 1}); autoRaidRow.LayoutOrder = 6
+        local raidLbl = new("TextLabel", {Parent = autoRaidRow, Position = UDim2.new(0,12,0,0), Size = UDim2.new(0.6,0,0,24), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, Text = "AUTO RAID (simulado)", TextColor3 = Color3.fromRGB(230,230,230), TextXAlignment = Enum.TextXAlignment.Left})
+        local raidToggle = new("TextButton", {Parent = autoRaidRow, Size = IS_MOBILE and UDim2.new(0,86,0,40) or UDim2.new(0.26,0,0,34), Position = UDim2.new(1,-(IS_MOBILE and 96 or 12) - 86,0,10), BackgroundColor3 = Color3.fromRGB(60,64,70), Text = "OFF", Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(240,240,240)})
+        new("UICorner", {Parent = raidToggle, CornerRadius = UDim.new(0,8)})
+        local raidProgOuter = new("Frame", {Parent = autoRaidRow, Size = UDim2.new(0.86,0,0,18), Position = UDim2.new(0,12,0,40), BackgroundColor3 = Color3.fromRGB(30,30,35)})
+        new("UICorner", {Parent = raidProgOuter, CornerRadius = UDim.new(0,6)})
+        local raidProgInner = new("Frame", {Parent = raidProgOuter, Size = UDim2.new(0,0,1,0), BackgroundColor3 = Color3.fromRGB(120,200,255)})
+        new("UICorner", {Parent = raidProgInner, CornerRadius = UDim.new(0,6)})
+
+        local autoRaidActive = false
+        raidToggle.MouseButton1Click:Connect(function()
+            autoRaidActive = not autoRaidActive
+            raidToggle.Text = autoRaidActive and "ON" or "OFF"
+            raidToggle.BackgroundColor3 = autoRaidActive and Color3.fromRGB(12,180,100) or Color3.fromRGB(60,64,70)
+            if autoRaidActive then
+                notify("Auto Raid (simulado) iniciado.")
+                spawn(function()
+                    local progress = 0
+                    while autoRaidActive do
+                        progress = progress + math.random(6,12)
+                        raidProgInner.Size = UDim2.new(math.clamp(progress/100,0,1),0,1,0)
+                        if progress >= 100 then
+                            notify("Auto Raid (simulado) finalizada.")
+                            raidProgInner.Size = UDim2.new(0,0,1,0)
+                            progress = 0
+                            -- if still active, loop again
+                        end
+                        wait(1.5)
+                    end
+                    raidProgInner.Size = UDim2.new(0,0,1,0)
+                end)
+            else
+                notify("Auto Raid (simulado) parado.")
+            end
+        end)
+
+        -- Auto AWK (simulado awakening)
+        local awkRow, awkGet, awkApply = createToggleRow(scroll, "Raid_AutoAwk", "AUTO AWK (despertar fruta) (simulado)", function(s)
+            if s then
+                notify("Auto AWK (simulado) ligado.")
+                spawn(function()
+                    local prog = 0
+                    while LocalPlayer:GetAttribute("JL_Raid_AutoAwk") do
+                        prog = prog + math.random(5,15)
+                        notify("Auto AWK (simulado): "..tostring(clamp(prog,0,100)).."%")
+                        if prog >= 100 then
+                            notify("Fruta despertada (simulado).")
+                            break
+                        end
+                        wait(2)
+                    end
+                end)
+            else
+                notify("Auto AWK (simulado) desligado.")
+            end
+        end)
+        awkRow.LayoutOrder = 7
+    end
+
+    local function populateSettings()
+        clearRight()
+        local scroll = new("ScrollingFrame", {Parent = rightCol, Size = UDim2.new(1,-24,1,-24), Position = UDim2.new(0,12,0,12), BackgroundTransparency = 1, ScrollBarThickness = 8, AutomaticCanvasSize = Enum.AutomaticSize.Y})
+        local layout = new("UIListLayout", {Parent = scroll, Padding = UDim.new(0,12), SortOrder = Enum.SortOrder.LayoutOrder})
+
+        -- Speed slider up to 350 (UI-only, saved attribute)
+        local row = new("Frame", {Parent = scroll, Size = UDim2.new(1,-28,0,80), BackgroundTransparency = 1}); row.LayoutOrder = 1
+        new("TextLabel", {Parent = row, Position = UDim2.new(0,12,0,0), Size = UDim2.new(0.5,0,0,20), BackgroundTransparency = 1, Font = Enum.Font.Gotham, Text = "Velocidade (max 350) - UI-only", TextColor3 = Color3.fromRGB(230,230,230), TextXAlignment = Enum.TextXAlignment.Left})
+        local sliderOuter = new("Frame", {Parent = row, Position = UDim2.new(0,12,0,28), Size = UDim2.new(1,-36,0,24), BackgroundColor3 = Color3.fromRGB(30,30,35)})
+        new("UICorner", {Parent = sliderOuter, CornerRadius = UDim.new(0,6)})
+        local sliderInner = new("Frame", {Parent = sliderOuter, Size = UDim2.new(0,0,1,0), BackgroundColor3 = Color3.fromRGB(120,200,255)})
+        new("UICorner", {Parent = sliderInner, CornerRadius = UDim.new(0,6)})
+        local valLabel = new("TextLabel", {Parent = row, Position = UDim2.new(1,-88,0,0), Size = UDim2.new(0,80,0,20), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(200,220,255)})
+
+        -- load saved speed
+        local speed = loadNumber("Settings_Speed", 16)
+        speed = clamp(speed, 0, 350)
+        valLabel.Text = tostring(math.floor(speed))
+        sliderInner.Size = UDim2.new(speed/350,0,1,0)
+
+        -- interactive drag (UI-only)
+        local dragging = false
+        sliderOuter.InputBegan:Connect(function(input)
+            if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
+                dragging = true
+            end
+        end)
+        UIS.InputEnded:Connect(function(input) if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dragging = false end end)
+        UIS.InputChanged:Connect(function(input)
+            if not dragging then return end
+            if input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch then
+                local absX = input.Position.X
+                local left = sliderOuter.AbsolutePosition.X
+                local w = sliderOuter.AbsoluteSize.X
+                local rel = clamp(absX - left, 0, w)
+                local percent = rel / w
+                speed = math.floor(percent * 350)
+                sliderInner.Size = UDim2.new(percent,0,1,0)
+                valLabel.Text = tostring(speed)
+                saveNumber("Settings_Speed", speed)
+            end
+        end)
+
+        -- show current saved speed
+        new("TextLabel", {Parent = scroll, Size = UDim2.new(1,-28,0,28), BackgroundTransparency = 1, Font = Enum.Font.Gotham, Text = "Obs: este slider é apenas UI e não altera sua velocidade no jogo.", TextColor3 = Color3.fromRGB(190,200,220)}).LayoutOrder = 2
+    end
+
+    -- create left category buttons in requested order and wire to populate functions
+    for i,cat in ipairs(categories) do
+        local btn = new("TextButton", {Parent = leftCol, Size = UDim2.new(1,-18,0, IS_MOBILE and 56 or 48), Position = UDim2.new(0,9,0,0), BackgroundColor3 = (i==1) and Color3.fromRGB(35,72,120) or Color3.fromRGB(18,20,24), Font = Enum.Font.GothamBold, Text = cat, TextColor3 = Color3.fromRGB(220,230,255)})
+        new("UICorner", {Parent = btn, CornerRadius = UDim.new(0,8)})
+        btn.LayoutOrder = i
+        btn.MouseButton1Click:Connect(makeDebounced(function()
+            for _,c in ipairs(leftCol:GetChildren()) do if c:IsA("TextButton") then c.BackgroundColor3 = Color3.fromRGB(18,20,24) end end
+            btn.BackgroundColor3 = Color3.fromRGB(35,72,120)
+            current = cat
+            if cat == "Main" then populateMain() elseif cat == "Player" then populatePlayer() elseif cat == "Raid|Fruta" then populateRaidFruta() elseif cat == "Settings" then populateSettings() end
+        end))
     end
 
     -- initial populate
-    populate(activeCat)
+    populateMain()
 
-    -- ESC toggle visibility
-    local escConn
-    escConn = UIS.InputBegan:Connect(function(input, gp) if gp then return end
-        if input.KeyCode == Enum.KeyCode.Escape then
-            hub.Visible = not hub.Visible
-        end
+    -- squareBtn toggles container visibility
+    squareBtn.MouseButton1Click:Connect(function() container.Visible = not container.Visible end)
+
+    -- ESC toggles visibility
+    local escConn = UIS.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if input.KeyCode == Enum.KeyCode.Escape then container.Visible = not container.Visible end
     end)
-    hubGui.Destroying:Connect(function() if escConn then escConn:Disconnect() end end)
+    -- ensure we clean connection when GUI destroyed
+    sg.Destroying:Connect(function() pcall(function() escConn:Disconnect() end) end)
 
-    Notify("JL Hub UI carregado (visual clone, sem cheats).")
+    notify("JL Hub carregado (UI-only). Todas as funções abaixo são placeholders visuais.")
 end
 
--- showBtn behavior: toggle or show key GUI
-showBtn.MouseButton1Click:Connect(function()
-    if hubGui and hubGui.Parent then
-        hubGui.Enabled = not hubGui.Enabled
-    else
-        if kgui and kgui.Parent == nil then kgui.Parent = cg end
-    end
-end)
+-- Entry: build floating button and key GUI
+local floatSG, floatBtn = buildFloatButton()
+local keyGui = buildKeyGui(function() buildMainHub() end)
 
--- Key enter
-enterBtn.MouseButton1Click:Connect(function()
-    if kinput.Text == KEY then
-        msglabel.TextColor3 = Color3.fromRGB(120,255,160); msglabel.Text = "Key correta! Abrindo JL Hub..."
-        wait(0.25)
-        if kgui and kgui.Parent then kgui:Destroy() end
-        buildHub()
-    else
-        msglabel.TextColor3 = Color3.fromRGB(255,100,100); msglabel.Text = "Key incorreta! Pegue no Discord."
-    end
-end)
-
--- allow Enter key on TextBox
-kinput.FocusLost:Connect(function(entered) if entered then enterBtn.MouseButton1Click:Wait() end end)
-
--- initial
-Notify("JL Hub UI loader pronto. Abra com o botão JL Hub ou insira a key.")
+-- show key gui initially
+-- (keyGui already parented to CoreGui by builder)
+notify("Inserir key 'jl123bc' para abrir o JL Hub.")
