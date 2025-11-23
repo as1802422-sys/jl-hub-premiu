@@ -1,398 +1,833 @@
--- StarterPlayerScripts/JLHubClient.lua
--- LocalScript (client): UI + Key system + client-side request wrapper for JL Hub.
--- Place this LocalScript in StarterPlayerScripts. It creates the UI and calls ReplicatedStorage.JLHubRequest for server actions.
--- The UI is "UI-only" for some features; for actions that change the game (AUTO_KILL, SET_SPEED, AUTO_MASTERY, TELEPORT)
--- it sends a request to the server which validates admin rights.
+-- JLHubUnified.lua
+-- Single-file client+server hub for your game (client: LocalScript in StarterPlayerScripts; server: Script in ServerScriptService)
+-- IMPORTANT: This runs server-side actions that change the game world. Use only in games you own.
+-- This version:
+--  - Auto-detects islands and bosses from workspace (no hardcoded "official" names required)
+--  - Provides UI listing islands and bosses (if you want exact Blox Fruits names, put models named exactly in workspace.Islands and workspace.Enemies)
+--  - Server-side speed control with large max (set SPEED_MAX below)
+--  - Other features: AUTO_FARM, AUTO_FARM_BOSS, RANDOM_FRUITS, AUTO_STORE_FRUIT, AUTO_RAID, AUTO_BUY_CHIP, AUTO_MASTERY, AUTO_KILL (admin)
+--
+-- Install:
+--  - Place a copy of this file as a LocalScript in StarterPlayerScripts (client UI).
+--  - Place a copy as a Script in ServerScriptService (server logic).
+--  - Configure AdminUserIds in the server copy if you need admin-only protections.
+--  - Put island Models under workspace.Islands, enemy/boss Models under workspace.Enemies (recommended).
+--  - Test in Studio using Play (Server).
 
+-- Services & environment check
 local Players = game:GetService("Players")
-local UIS = game:GetService("UserInputService")
-local StarterGui = game:GetService("StarterGui")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local CoreGui = game:GetService("CoreGui")
 local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local StarterGui = game:GetService("StarterGui")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
 
-local LocalPlayer = Players.LocalPlayer
-if not LocalPlayer then return end
+local isClient = script:IsA("LocalScript") or (Players.LocalPlayer ~= nil)
 
--- Remote event names
+-- Shared configuration
 local REQUEST_EVENT_NAME = "JLHubRequest"
 local RESPONSE_EVENT_NAME = "JLHubResponse"
+local KEY = "jl123bc"
+local KEYLINK = "https://discord.gg/zehZhX7fU"
 
--- Try to find remote events (server will create if missing)
-local requestEvent = ReplicatedStorage:FindFirstChild(REQUEST_EVENT_NAME)
-local responseEvent = ReplicatedStorage:FindFirstChild(RESPONSE_EVENT_NAME)
+-- Game structure names (adjust if your project uses different folders)
+local ENEMY_FOLDER_NAME = "Enemies"
+local MISSION_GIVERS_FOLDER = "MissionGivers"
+local ISLANDS_FOLDER = "Islands"
+local RAID_FOLDER = "Raids"
 
--- Utility
-local function notify(text)
-    pcall(function()
-        StarterGui:SetCore("SendNotification", {Title = "JL Hub", Text = text, Duration = 3})
-    end)
-end
-local function clamp(v,a,b) if v < a then return a elseif v > b then return b else return v end end
+-- Behavior tuning
+local KILL_RADIUS = 60
+local KILL_TICK = 0.8
+local MAX_KILLS_PER_TICK = 10
+local NPC_MIN_HEALTH_THRESHOLD = 1
 
--- Request wrapper
-local JLHubClient = {}
-function JLHubClient:RequestAction(actionName, enabled, params)
-    if not requestEvent then
-        warn("[JLHubClient] ReplicatedStorage."..REQUEST_EVENT_NAME.." not found. Server should create it.")
-        return
+local MASTERY_TICK = 1.5
+local MASTERY_XP_PER_TICK = 8
+local MASTERY_XP_TO_LEVEL = 100
+local MASTERY_MAX_LEVEL = 1000
+
+local RANDOM_FRUIT_INTERVAL = 2.5
+local AUTO_STORE_INTERVAL = 3
+local AUTO_BUY_INTERVAL = 4
+local AUTO_RAID_STEP = 1.5
+
+-- SPEED: increased maximum for fast running. Adjust as desired.
+local SPEED_MAX = 1000    -- high allowed top speed (server clamps)
+local DEFAULT_WALKSPEED = 16
+
+-- Helper: ensure RemoteEvent exists
+local function ensureRemoteEvent(name)
+    local ev = ReplicatedStorage:FindFirstChild(name)
+    if not ev then
+        ev = Instance.new("RemoteEvent")
+        ev.Name = name
+        ev.Parent = ReplicatedStorage
     end
-    local payload = {
-        action = tostring(actionName),
-        enabled = enabled and true or false,
-        params = params or {},
-        timestamp = os.time()
-    }
-    local ok, err = pcall(function()
-        requestEvent:FireServer(payload)
-    end)
-    if not ok then warn("[JLHubClient] FireServer failed:", err) end
+    return ev
 end
 
--- Listen server responses (optional)
-if responseEvent then
-    responseEvent.OnClientEvent:Connect(function(resp)
-        if type(resp) == "table" and resp.message then
-            notify(resp.message)
-        end
-    end)
-end
+-- CLIENT CODE
+if isClient then
+    local LocalPlayer = Players.LocalPlayer
+    if not LocalPlayer then return end
 
--- Expose convenience functions for UI integration
-function JLHubClient.ToggleAutoKill(state)
-    JLHubClient:RequestAction("AUTO_KILL", state)
-end
-function JLHubClient.ToggleAutoMastery(state, target)
-    JLHubClient:RequestAction("AUTO_MASTERY", state, { target = tostring(target or "Fruit") })
-end
-function JLHubClient.SetSpeed(enabled, speed)
-    JLHubClient:RequestAction("SET_SPEED", enabled, { speed = tonumber(speed) or nil })
-end
-function JLHubClient.TeleportToIsland(islandName)
-    JLHubClient:RequestAction("TELEPORT", true, { island = islandName })
-end
+    local requestEvent = ReplicatedStorage:FindFirstChild(REQUEST_EVENT_NAME)
+    local responseEvent = ReplicatedStorage:FindFirstChild(RESPONSE_EVENT_NAME)
 
-_G.JLHubClient = JLHubClient
-
--- =====================
--- UI + Key system (integrated)
--- Minimal, responsive UI based on previous design: categories left, content right, floating button.
--- When toggles/sliders change, call JLHubClient functions above.
--- =====================
-
-local BG_ASSET = "rbxassetid://14924794312"
-local KEY = "jl123bc" -- keep same key (change if needed)
-local KEYLINK = "https://discord.gg/zehZhX7fU" -- UPDATED link as requested
-
--- cleanup any existing GUIs we created before
-for _,name in ipairs({"JLHubKey","JLHubMain","JLHubShowBtn"}) do
-    local ex = CoreGui:FindFirstChild(name)
-    if ex then pcall(function() ex:Destroy() end) end
-end
-
-local IS_MOBILE = UIS.TouchEnabled and not UIS.KeyboardEnabled
-
-local function new(class, props)
-    local inst = Instance.new(class)
-    if props then
-        for k,v in pairs(props) do
-            if k == "Parent" then inst.Parent = v else pcall(function() inst[k] = v end) end
-        end
-    end
-    return inst
-end
-
--- Floating button
-local function buildFloatButton()
-    local sg = Instance.new("ScreenGui", CoreGui)
-    sg.Name = "JLHubShowBtn"; sg.IgnoreGuiInset = true; sg.ResetOnSpawn = false
-    local btn = new("TextButton", {
-        Parent = sg,
-        Size = IS_MOBILE and UDim2.new(0,110,0,40) or UDim2.new(0,136,0,46),
-        Position = IS_MOBILE and UDim2.new(1,-140,0,20) or UDim2.new(0,20,0.38,0),
-        BackgroundColor3 = Color3.fromRGB(12,12,14),
-        Text = "JL Hub",
-        Font = Enum.Font.GothamBlack,
-        TextColor3 = Color3.fromRGB(90,170,255),
-        TextSize = IS_MOBILE and 16 or 20,
-    })
-    new("UICorner", {Parent = btn, CornerRadius = UDim.new(0,10)})
-    -- draggable
-    local dragging=false; local dx,dy=0,0
-    btn.InputBegan:Connect(function(input)
-        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
-            dragging=true; dx=input.Position.X-btn.Position.X.Offset; dy=input.Position.Y-btn.Position.Y.Offset
-        end
-    end)
-    UIS.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch) then
-            local x = input.Position.X-dx; local y = input.Position.Y-dy
-            btn.Position = UDim2.new(0, clamp(x,0,workspace.CurrentCamera.ViewportSize.X-btn.Size.X.Offset), 0, clamp(y,0,workspace.CurrentCamera.ViewportSize.Y-btn.Size.Y.Offset))
-        end
-    end)
-    UIS.InputEnded:Connect(function(input) if dragging then dragging=false end end)
-    return sg, btn
-end
-
--- Key GUI
-local function buildKeyGui(onSuccess)
-    local kg = Instance.new("ScreenGui", CoreGui); kg.Name = "JLHubKey"; kg.IgnoreGuiInset = true
-    local frame = new("Frame", {Parent = kg, AnchorPoint = Vector2.new(0.5,0.5), Position = UDim2.new(0.5,0,0.5,0), Size = IS_MOBILE and UDim2.new(0,320,0,170) or UDim2.new(0,420,0,210), BackgroundColor3 = Color3.fromRGB(18,20,22)})
-    new("UICorner", {Parent = frame, CornerRadius = UDim.new(0,12)})
-    new("TextLabel", {Parent = frame, Size = UDim2.new(1,0,0,44), Position = UDim2.new(0,0,0,0), BackgroundTransparency = 1, Font = Enum.Font.GothamBlack, Text = "🔑 JL Hub - Key", TextColor3 = Color3.fromRGB(90,170,255), TextSize = IS_MOBILE and 16 or 22})
-    new("TextLabel", {Parent = frame, Size = UDim2.new(1,-28,0,36), Position = UDim2.new(0,14,0,46), BackgroundTransparency = 1, Font = Enum.Font.Gotham, Text = "Cole a key do Discord e pressione Entrar", TextColor3 = Color3.fromRGB(200,220,240), TextXAlignment = Enum.TextXAlignment.Left})
-    local input = new("TextBox", {Parent = frame, Size = IS_MOBILE and UDim2.new(1,-28,0,34) or UDim2.new(1,-36,0,40), Position = UDim2.new(0,14,0,84), BackgroundColor3 = Color3.fromRGB(14,16,18), TextColor3 = Color3.fromRGB(220,240,255), Font = Enum.Font.Gotham, PlaceholderText = "Digite sua Key..."})
-    new("UICorner", {Parent = input, CornerRadius = UDim.new(0,8)})
-    local msg = new("TextLabel", {Parent = frame, Size = UDim2.new(1,-28,0,18), Position = UDim2.new(0,14,0,130), BackgroundTransparency = 1, Font = Enum.Font.Gotham, TextColor3 = Color3.fromRGB(255,100,100)})
-    local enterBtn = new("TextButton", {Parent = frame, Size = UDim2.new(0.44,0,0,36), Position = UDim2.new(0.06,0,1,-46), BackgroundColor3 = Color3.fromRGB(20,160,100), Font = Enum.Font.GothamBold, Text = "Entrar", TextColor3 = Color3.fromRGB(240,240,240)})
-    new("UICorner", {Parent = enterBtn, CornerRadius = UDim.new(0,8)})
-    local getBtn = new("TextButton", {Parent = frame, Size = enterBtn.Size, Position = UDim2.new(0.5,8,1,enterBtn.Position.Y.Offset), BackgroundColor3 = Color3.fromRGB(40,80,200), Font = Enum.Font.GothamBold, Text = "Pegar Key", TextColor3 = Color3.fromRGB(240,240,255)})
-    new("UICorner", {Parent = getBtn, CornerRadius = UDim.new(0,8)})
-
-    getBtn.MouseButton1Click:Connect(function() pcall(function() setclipboard(KEYLINK) end); msg.TextColor3 = Color3.fromRGB(80,180,255); msg.Text = "Link Discord copiado!" end)
-    enterBtn.MouseButton1Click:Connect(function()
-        if tostring(input.Text or "") == KEY then
-            msg.TextColor3 = Color3.fromRGB(120,255,160); msg.Text = "Key correta! Abrindo..."
-            wait(0.2)
-            pcall(function() kg:Destroy() end)
-            if onSuccess then onSuccess() end
-        else
-            msg.TextColor3 = Color3.fromRGB(255,100,100); msg.Text = "Key incorreta! Pegue no Discord."
-        end
-    end)
-    input.FocusLost:Connect(function(enter) if enter then enterBtn.MouseButton1Click:Wait() end end)
-    return kg
-end
-
--- Minimal hub builder (left categories + right content)
-local function buildMainHub()
-    local existing = CoreGui:FindFirstChild("JLHubMain")
-    if existing then pcall(function() existing:Destroy() end) end
-
-    local sg = Instance.new("ScreenGui", CoreGui); sg.Name = "JLHubMain"; sg.IgnoreGuiInset = true; sg.ResetOnSpawn = false
-    local bg = new("ImageLabel", {Parent = sg, Image = BG_ASSET, Size = UDim2.new(1,0,1,0), BackgroundTransparency = 1}); bg.ImageTransparency = 0.72
-    local overlay = new("Frame", {Parent = sg, Size = UDim2.new(1,0,1,0), BackgroundColor3 = Color3.fromRGB(8,10,12), BackgroundTransparency = 0.28})
-
-    local container = new("Frame", {Parent = sg, Size = UDim2.new(1,-40,1,-40), Position = UDim2.new(0,20,0,20), BackgroundColor3 = Color3.fromRGB(8,10,14)})
-    new("UICorner", {Parent = container, CornerRadius = UDim.new(0,12)})
-
-    local titleBar = new("Frame", {Parent = container, Size = UDim2.new(1,0,0,72), BackgroundTransparency = 1})
-    new("TextLabel", {Parent = titleBar, Position = UDim2.new(0,20,0,12), Size = UDim2.new(0.6,0,1,0), Text = "JL Hub", Font = Enum.Font.GothamBlack, TextColor3 = Color3.fromRGB(90,170,255), TextSize = IS_MOBILE and 20 or 34, BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left})
-    local squareBtn = new("TextButton", {Parent = titleBar, Size = IS_MOBILE and UDim2.new(0,56,0,40) or UDim2.new(0,84,0,48), Position = UDim2.new(1,-(IS_MOBILE and 80 or 110),0,12), BackgroundColor3 = Color3.fromRGB(6,8,10), Text = "JL Hub", Font = Enum.Font.GothamBlack, TextColor3 = Color3.fromRGB(90,170,255)})
-    new("UICorner", {Parent = squareBtn, CornerRadius = UDim.new(0,8)})
-
-    local leftW = IS_MOBILE and 160 or 220
-    local leftCol = new("Frame", {Parent = container, Size = UDim2.new(0,leftW,1,-titleBar.Size.Y.Offset-24), Position = UDim2.new(0,12,0,titleBar.Size.Y.Offset+12), BackgroundColor3 = Color3.fromRGB(10,12,16)})
-    new("UICorner", {Parent = leftCol, CornerRadius = UDim.new(0,10)})
-    local rightCol = new("Frame", {Parent = container, Size = UDim2.new(1,-(leftW+48),1,-titleBar.Size.Y.Offset-24), Position = UDim2.new(0,leftW+24,0,titleBar.Size.Y.Offset+12), BackgroundColor3 = Color3.fromRGB(14,16,20)})
-    new("UICorner", {Parent = rightCol, CornerRadius = UDim.new(0,10)})
-
-    new("UIListLayout", {Parent = leftCol, Padding = UDim.new(0,8), SortOrder = Enum.SortOrder.LayoutOrder}).HorizontalAlignment = Enum.HorizontalAlignment.Center
-
-    local categories = {"Main","Player","Raid|Fruta","Settings"}
-    local function clearRight()
-        for _,c in ipairs(rightCol:GetChildren()) do
-            if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then pcall(function() c:Destroy() end) end
-        end
+    local function notify(text)
+        pcall(function() StarterGui:SetCore("SendNotification", { Title = "JL Hub", Text = text, Duration = 3 }) end)
     end
 
-    local function createToggleRow(parent, key, labelText, callback)
-        local row = new("Frame", {Parent = parent, Size = UDim2.new(1,-28,0, IS_MOBILE and 64 or 48), BackgroundTransparency = 1})
-        local lbl = new("TextLabel", {Parent = row, Position = UDim2.new(0,12,0,0), Size = UDim2.new(0.66,0,1,0), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = IS_MOBILE and 18 or 16, TextColor3 = Color3.fromRGB(230,230,230), Text = labelText, TextXAlignment = Enum.TextXAlignment.Left})
-        local tbtn = new("TextButton", {Parent = row, Size = IS_MOBILE and UDim2.new(0,86,0,40) or UDim2.new(0.26,0,0,34), BackgroundColor3 = Color3.fromRGB(60,64,70), Font = Enum.Font.GothamBold, Text = "OFF", TextColor3 = Color3.fromRGB(240,240,240)})
-        new("UICorner", {Parent = tbtn, CornerRadius = UDim.new(0,8)})
-        tbtn.Position = UDim2.new(1, - (IS_MOBILE and 96 or 12) - tbtn.Size.X.Offset, 0, (row.Size.Y.Offset - tbtn.Size.Y.Offset)/2)
-        local state = LocalPlayer:GetAttribute("JL_"..key) or false
-        local function apply(v)
-            state = v and true or false
-            pcall(function() LocalPlayer:SetAttribute("JL_"..key, state) end)
-            tbtn.BackgroundColor3 = state and Color3.fromRGB(12,180,100) or Color3.fromRGB(60,64,70)
-            tbtn.Text = state and "ON" or "OFF"
-            if callback then pcall(callback, state) end
-        end
-        apply(state)
-        tbtn.MouseButton1Click:Connect(function() apply(not state) end)
-        return row
+    local function clamp(v,a,b) if v < a then return a elseif v > b then return b else return v end end
+
+    local JLHubClient = {}
+    function JLHubClient:RequestAction(actionName, enabled, params)
+        requestEvent = requestEvent or ReplicatedStorage:FindFirstChild(REQUEST_EVENT_NAME)
+        if not requestEvent then warn("[JLHubClient] RemoteEvent missing:", REQUEST_EVENT_NAME); return end
+        local payload = { action = tostring(actionName), enabled = enabled and true or false, params = params or {}, timestamp = os.time() }
+        local ok, err = pcall(function() requestEvent:FireServer(payload) end)
+        if not ok then warn("[JLHubClient] FireServer failed:", err) end
     end
 
-    -- Populate functions
-    local function populateMain()
-        clearRight()
-        local scroll = new("ScrollingFrame", {Parent = rightCol, Size = UDim2.new(1,-24,1,-24), Position = UDim2.new(0,12,0,12), BackgroundTransparency = 1, ScrollBarThickness = 8, AutomaticCanvasSize = Enum.AutomaticSize.Y})
-        new("UIListLayout", {Parent = scroll, Padding = UDim.new(0,12), SortOrder = Enum.SortOrder.LayoutOrder})
-
-        -- selector
-        local selectorFrame = new("Frame", {Parent = scroll, Size = UDim2.new(1,-28,0,48), BackgroundTransparency = 1}); selectorFrame.LayoutOrder = 1
-        new("TextLabel", {Parent = selectorFrame, Position = UDim2.new(0,12,0,0), Size = UDim2.new(0.5,0,1,0), BackgroundTransparency = 1, Font = Enum.Font.Gotham, Text = "Ferramenta para Farm:", TextColor3 = Color3.fromRGB(220,220,220), TextXAlignment = Enum.TextXAlignment.Left})
-        local optSword = new("TextButton", {Parent = selectorFrame, Size = UDim2.new(0,96,0,34), Position = UDim2.new(0.5, 6, 0, 7), BackgroundColor3 = Color3.fromRGB(40,40,50), Text = "Espada", Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(240,240,240)})
-        local optFist = new("TextButton", {Parent = selectorFrame, Size = UDim2.new(0,96,0,34), Position = UDim2.new(0.5, 110, 0, 7), BackgroundColor3 = Color3.fromRGB(40,40,50), Text = "Soco", Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(240,240,240)})
-        new("UICorner", {Parent=optSword, CornerRadius = UDim.new(0,8)}); new("UICorner", {Parent=optFist, CornerRadius = UDim.new(0,8)})
-        local selTool = LocalPlayer:GetAttribute("JL_Main_Tool") or "Espada"
-        local function updateToolVisual()
-            optSword.BackgroundColor3 = (selTool=="Espada") and Color3.fromRGB(35,72,120) or Color3.fromRGB(40,40,50)
-            optFist.BackgroundColor3 = (selTool=="Soco") and Color3.fromRGB(35,72,120) or Color3.fromRGB(40,40,50)
-        end
-        updateToolVisual()
-        optSword.MouseButton1Click:Connect(function() selTool="Espada"; pcall(function() LocalPlayer:SetAttribute("JL_Main_Tool", selTool) end); updateToolVisual(); notify("Selecionado: Espada (UI-only)") end)
-        optFist.MouseButton1Click:Connect(function() selTool="Soco"; pcall(function() LocalPlayer:SetAttribute("JL_Main_Tool", selTool) end); updateToolVisual(); notify("Selecionado: Soco (UI-only)") end)
-
-        -- Auto Farm (client requests server)
-        local farmRow = createToggleRow(scroll, "Main_AutoFarm", "AUTO FARM", function(state)
-            JLHubClient:RequestAction("AUTO_FARM", state, { tool = LocalPlayer:GetAttribute("JL_Main_Tool") or "Espada" })
+    responseEvent = responseEvent or ReplicatedStorage:FindFirstChild(RESPONSE_EVENT_NAME)
+    if responseEvent then
+        responseEvent.OnClientEvent:Connect(function(resp)
+            if type(resp) == "table" and resp.message then notify(resp.message) end
         end)
-        farmRow.LayoutOrder = 2
+    end
 
-        -- Auto Boss
-        local bossRow = createToggleRow(scroll, "Main_AutoBoss", "AUTO BOSS", function(state)
-            JLHubClient:RequestAction("AUTO_BOSS", state)
+    -- Convenience wrappers used by the UI
+    function JLHubClient.ToggleAutoFarm(state, method) JLHubClient:RequestAction("AUTO_FARM", state, { method = tostring(method or "Combat") }) end
+    function JLHubClient.ToggleAutoFarmBoss(state, bossName, all) JLHubClient:RequestAction("AUTO_FARM_BOSS", state, { boss = tostring(bossName or ""), all = (all == true) }) end
+    function JLHubClient.ToggleRandomFruits(state) JLHubClient:RequestAction("RANDOM_FRUITS", state) end
+    function JLHubClient.ToggleAutoStoreFruit(state) JLHubClient:RequestAction("AUTO_STORE_FRUIT", state) end
+    function JLHubClient.ToggleAutoRaid(state) JLHubClient:RequestAction("AUTO_RAID", state) end
+    function JLHubClient.ToggleAutoBuyChip(state) JLHubClient:RequestAction("AUTO_BUY_CHIP", state) end
+    function JLHubClient.SetSpeed(enabled, speed) JLHubClient:RequestAction("SET_SPEED", enabled, { speed = tonumber(speed) or nil }) end
+    function JLHubClient.ToggleAutoMastery(state, target) JLHubClient:RequestAction("AUTO_MASTERY", state, { target = tostring(target or "Fruit") }) end
+    function JLHubClient.TeleportToIsland(islandName) JLHubClient:RequestAction("TELEPORT", true, { island = islandName }) end
+
+    _G.JLHubClient = JLHubClient
+
+    -- UI: builds lists by querying workspace.Islands and workspace.Enemies for bosses.
+    local IS_MOBILE = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+
+    -- cleanup old GUIs
+    for _,n in ipairs({"JLHubKey","JLHubMain","JLHubShowBtn"}) do local ex = CoreGui:FindFirstChild(n) if ex then pcall(function() ex:Destroy() end) end end
+
+    local function new(class, props)
+        local inst = Instance.new(class)
+        if props then for k,v in pairs(props) do if k == "Parent" then inst.Parent = v else pcall(function() inst[k] = v end) end end end
+        return inst
+    end
+
+    local function buildFloatButton()
+        local sg = Instance.new("ScreenGui", CoreGui); sg.Name = "JLHubShowBtn"; sg.IgnoreGuiInset = true; sg.ResetOnSpawn = false
+        local btn = new("TextButton", { Parent = sg, Size = IS_MOBILE and UDim2.new(0,110,0,40) or UDim2.new(0,136,0,46),
+            Position = IS_MOBILE and UDim2.new(1,-140,0,20) or UDim2.new(0,20,0.38,0), BackgroundColor3 = Color3.fromRGB(12,12,14), Text = "JL Hub", Font = Enum.Font.GothamBlack, TextColor3 = Color3.fromRGB(90,170,255) })
+        new("UICorner",{Parent=btn, CornerRadius=UDim.new(0,10)})
+        local dragging=false; local dx,dy=0,0
+        btn.InputBegan:Connect(function(input) if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dragging=true; dx=input.Position.X-btn.Position.X.Offset; dy=input.Position.Y-btn.Position.Y.Offset end end)
+        UserInputService.InputChanged:Connect(function(input) if dragging and (input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch) then local x=input.Position.X-dx; local y=input.Position.Y-dy; btn.Position = UDim2.new(0, clamp(x,0,workspace.CurrentCamera.ViewportSize.X-btn.Size.X.Offset), 0, clamp(y,0,workspace.CurrentCamera.ViewportSize.Y-btn.Size.Y.Offset)) end end)
+        UserInputService.InputEnded:Connect(function() dragging=false end)
+        return sg, btn
+    end
+
+    local function buildKeyGui(onSuccess)
+        local kg = Instance.new("ScreenGui", CoreGui); kg.Name = "JLHubKey"; kg.IgnoreGuiInset = true
+        local frame = new("Frame", { Parent = kg, AnchorPoint = Vector2.new(0.5,0.5), Position = UDim2.new(0.5,0,0.5,0),
+            Size = IS_MOBILE and UDim2.new(0,320,0,170) or UDim2.new(0,420,0,210), BackgroundColor3 = Color3.fromRGB(18,20,22) })
+        new("UICorner",{Parent=frame, CornerRadius=UDim.new(0,12)})
+        new("TextLabel",{Parent=frame, Size=UDim2.new(1,0,0,44), BackgroundTransparency=1, Font=Enum.Font.GothamBlack, Text="🔑 JL Hub - Key", TextColor3=Color3.fromRGB(90,170,255)})
+        local info = new("TextLabel",{Parent=frame, Size=UDim2.new(1,-28,0,36), Position=UDim2.new(0,14,0,46), BackgroundTransparency=1, Font=Enum.Font.Gotham, Text="Cole a key do Discord e pressione Entrar", TextColor3=Color3.fromRGB(200,220,240), TextXAlignment=Enum.TextXAlignment.Left})
+        local input = new("TextBox",{Parent=frame, Size=IS_MOBILE and UDim2.new(1,-28,0,34) or UDim2.new(1,-36,0,40), Position=UDim2.new(0,14,0,84), BackgroundColor3=Color3.fromRGB(14,16,18), TextColor3=Color3.fromRGB(220,240,255), Font=Enum.Font.Gotham, PlaceholderText="Digite sua Key..."})
+        new("UICorner",{Parent=input, CornerRadius=UDim.new(0,8)})
+        local msg = new("TextLabel",{Parent=frame, Size=UDim2.new(1,-28,0,18), Position=UDim2.new(0,14,0,130), BackgroundTransparency=1, Font=Enum.Font.Gotham, TextColor3=Color3.fromRGB(255,100,100)})
+        local enterBtn = new("TextButton",{Parent=frame, Size=UDim2.new(0.44,0,0,36), Position=UDim2.new(0.06,0,1,-46), BackgroundColor3=Color3.fromRGB(20,160,100), Font=Enum.Font.GothamBold, Text="Entrar", TextColor3=Color3.fromRGB(240,240,240)})
+        new("UICorner",{Parent=enterBtn, CornerRadius=UDim.new(0,8)})
+        local getBtn = new("TextButton",{Parent=frame, Size=enterBtn.Size, Position=UDim2.new(0.5,8,1,enterBtn.Position.Y.Offset), BackgroundColor3=Color3.fromRGB(40,80,200), Font=Enum.Font.GothamBold, Text="Pegar Key", TextColor3=Color3.fromRGB(240,240,255)})
+        new("UICorner",{Parent=getBtn, CornerRadius=UDim.new(0,8)})
+
+        getBtn.MouseButton1Click:Connect(function() pcall(function() setclipboard(KEYLINK) end); msg.TextColor3=Color3.fromRGB(80,180,255); msg.Text="Link Discord copiado!" end)
+        enterBtn.MouseButton1Click:Connect(function()
+            if tostring(input.Text or "") == KEY then msg.TextColor3=Color3.fromRGB(120,255,160); msg.Text="Key correta! Abrindo..."; wait(0.2); pcall(function() kg:Destroy() end); if onSuccess then onSuccess() end
+            else msg.TextColor3=Color3.fromRGB(255,100,100); msg.Text="Key incorreta! Pegue no Discord." end
         end)
-        bossRow.LayoutOrder = 3
+        input.FocusLost:Connect(function(enter) if enter then enterBtn.MouseButton1Click:Wait() end end)
+        return kg
+    end
 
-        -- Auto Mastery selector + toggle (client requests server)
-        local masteryFrame = new("Frame", {Parent = scroll, Size = UDim2.new(1,-28,0,48), BackgroundTransparency = 1}); masteryFrame.LayoutOrder = 4
-        new("TextLabel", {Parent = masteryFrame, Position = UDim2.new(0,12,0,0), Size = UDim2.new(0.5,0,1,0), BackgroundTransparency = 1, Font = Enum.Font.Gotham, Text = "Auto Mastery target:", TextColor3 = Color3.fromRGB(220,220,220), TextXAlignment = Enum.TextXAlignment.Left})
-        local optFruit = new("TextButton", {Parent = masteryFrame, Size = UDim2.new(0,96,0,34), Position = UDim2.new(0.5, 6, 0, 7), BackgroundColor3 = Color3.fromRGB(40,40,50), Text = "Fruit", Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(240,240,240)})
-        local optGun = new("TextButton", {Parent = masteryFrame, Size = UDim2.new(0,96,0,34), Position = UDim2.new(0.5, 110, 0, 7), BackgroundColor3 = Color3.fromRGB(40,40,50), Text = "Gun", Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(240,240,240)})
-        new("UICorner", {Parent=optFruit, CornerRadius=UDim.new(0,8)}); new("UICorner", {Parent=optGun, CornerRadius=UDim.new(0,8)})
-        local masteryTarget = LocalPlayer:GetAttribute("JL_Main_MasteryTarget") or "Fruit"
-        local function updateMasteryVisual()
-            optFruit.BackgroundColor3 = (masteryTarget=="Fruit") and Color3.fromRGB(35,72,120) or Color3.fromRGB(40,40,50)
-            optGun.BackgroundColor3 = (masteryTarget=="Gun") and Color3.fromRGB(35,72,120) or Color3.fromRGB(40,40,50)
+    -- Build main hub UI (auto-detect islands & bosses)
+    local function buildMainHub()
+        local existing = CoreGui:FindFirstChild("JLHubMain")
+        if existing then pcall(function() existing:Destroy() end) end
+        local sg = Instance.new("ScreenGui", CoreGui); sg.Name="JLHubMain"; sg.IgnoreGuiInset=true; sg.ResetOnSpawn=false
+
+        local bg = new("ImageLabel",{Parent=sg, Image="rbxassetid://14924794312", Size=UDim2.new(1,0,1,0), BackgroundTransparency=1}); bg.ImageTransparency=0.72
+        new("Frame",{Parent=sg, Size=UDim2.new(1,0,1,0), BackgroundColor3=Color3.fromRGB(8,10,12), BackgroundTransparency=0.28})
+        local container = new("Frame",{Parent=sg, Size=UDim2.new(1,-40,1,-40), Position=UDim2.new(0,20,0,20), BackgroundColor3=Color3.fromRGB(8,10,14)})
+        new("UICorner",{Parent=container, CornerRadius=UDim.new(0,12)})
+        local titleBar = new("Frame",{Parent=container, Size=UDim2.new(1,0,0,72), BackgroundTransparency=1})
+        new("TextLabel",{Parent=titleBar, Position=UDim2.new(0,20,0,12), Size=UDim2.new(0.6,0,1,0), Text="JL Hub", Font=Enum.Font.GothamBlack, TextColor3=Color3.fromRGB(90,170,255), TextSize=IS_MOBILE and 20 or 34, BackgroundTransparency=1, TextXAlignment=Enum.TextXAlignment.Left})
+        local squareBtn = new("TextButton",{Parent=titleBar, Size=IS_MOBILE and UDim2.new(0,56,0,40) or UDim2.new(0,84,0,48), Position=UDim2.new(1,-(IS_MOBILE and 80 or 110),0,12), BackgroundColor3=Color3.fromRGB(6,8,10), Text="JL Hub", Font=Enum.Font.GothamBlack, TextColor3=Color3.fromRGB(90,170,255)})
+        new("UICorner",{Parent=squareBtn, CornerRadius=UDim.new(0,8)})
+
+        local leftW = IS_MOBILE and 160 or 220
+        local leftCol = new("Frame",{Parent=container, Size=UDim2.new(0,leftW,1,-titleBar.Size.Y.Offset-24), Position=UDim2.new(0,12,0,titleBar.Size.Y.Offset+12), BackgroundColor3=Color3.fromRGB(10,12,16)})
+        new("UICorner",{Parent=leftCol, CornerRadius=UDim.new(0,10)})
+        local rightCol = new("Frame",{Parent=container, Size=UDim2.new(1,-(leftW+48),1,-titleBar.Size.Y.Offset-24), Position=UDim2.new(0,leftW+24,0,titleBar.Size.Y.Offset+12), BackgroundColor3=Color3.fromRGB(14,16,20)})
+        new("UICorner",{Parent=rightCol, CornerRadius=UDim.new(0,10)})
+        new("UIListLayout",{Parent=leftCol, Padding=UDim.new(0,8), SortOrder=Enum.SortOrder.LayoutOrder}).HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+        local categories = {"Main","Settings"}
+        local function clearRight() for _,c in ipairs(rightCol:GetChildren()) do if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then pcall(function() c:Destroy() end) end end end
+
+        local function createToggleRow(parent, label, onToggle)
+            local row = new("Frame",{Parent=parent, Size=UDim2.new(1,-28,0,48), BackgroundTransparency=1})
+            local lbl = new("TextLabel",{Parent=row, Position=UDim2.new(0,12,0,0), Size=UDim2.new(0.66,0,1,0), BackgroundTransparency=1, Font=Enum.Font.GothamBold, Text=label, TextColor3=Color3.fromRGB(230,230,230)})
+            local btn = new("TextButton",{Parent=row, Size=UDim2.new(0.28,0,0,34), Position=UDim2.new(1,-(12+ (IS_MOBILE and 86 or 0) ),0,7), BackgroundColor3=Color3.fromRGB(60,64,70), Text="OFF", Font=Enum.Font.GothamBold, TextColor3=Color3.fromRGB(240,240,240)})
+            new("UICorner",{Parent=btn, CornerRadius=UDim.new(0,8)})
+            local state = false
+            local function apply(v) state = v; btn.BackgroundColor3 = state and Color3.fromRGB(12,180,100) or Color3.fromRGB(60,64,70); btn.Text = state and "ON" or "OFF"; pcall(onToggle, state) end
+            btn.MouseButton1Click:Connect(function() apply(not state) end)
+            return row
         end
-        updateMasteryVisual()
-        optFruit.MouseButton1Click:Connect(function() masteryTarget="Fruit"; pcall(function() LocalPlayer:SetAttribute("JL_Main_MasteryTarget", masteryTarget) end); updateMasteryVisual(); notify("Mastery target: Fruit (UI-only)") end)
-        optGun.MouseButton1Click:Connect(function() masteryTarget="Gun"; pcall(function() LocalPlayer:SetAttribute("JL_Main_MasteryTarget", masteryTarget) end); updateMasteryVisual(); notify("Mastery target: Gun (UI-only)") end)
 
-        local masteryRow = createToggleRow(scroll, "Main_AutoMastery", "AUTO MASTERY", function(state)
-            JLHubClient:RequestAction("AUTO_MASTERY", state, { target = LocalPlayer:GetAttribute("JL_Main_MasteryTarget") or "Fruit" })
-        end)
-        masteryRow.LayoutOrder = 5
-    end
+        -- populate main with auto features
+        local function populateMain()
+            clearRight()
+            local scroll = new("ScrollingFrame",{Parent=rightCol, Size=UDim2.new(1,-24,1,-24), Position=UDim2.new(0,12,0,12), BackgroundTransparency=1, ScrollBarThickness=8, AutomaticCanvasSize=Enum.AutomaticSize.Y})
+            new("UIListLayout",{Parent=scroll, Padding=UDim.new(0,12), SortOrder=Enum.SortOrder.LayoutOrder})
 
-    local function populatePlayer()
-        clearRight()
-        local scroll = new("ScrollingFrame", {Parent = rightCol, Size = UDim2.new(1,-24,1,-24), Position = UDim2.new(0,12,0,12), BackgroundTransparency = 1, ScrollBarThickness = 8, AutomaticCanvasSize = Enum.AutomaticSize.Y})
-        new("UIListLayout", {Parent = scroll, Padding = UDim.new(0,12), SortOrder = Enum.SortOrder.LayoutOrder})
-        local aimbotRow = createToggleRow(scroll, "Player_Aimbot", "AIMBOT (visual)", function(state) JLHubClient:RequestAction("PLAYER_AIMBOT_VISUAL", state) end); aimbotRow.LayoutOrder = 1
-        local espPlayersRow = createToggleRow(scroll, "Player_ESPPlayers", "ESP PLAYERS (lista)", function(state) JLHubClient:RequestAction("PLAYER_ESP_PLAYERS", state) end); espPlayersRow.LayoutOrder = 2
-        local espFruitRow = createToggleRow(scroll, "Player_ESPFruit", "ESP FRUTAS (lista)", function(state) JLHubClient:RequestAction("PLAYER_ESP_FRUIT", state) end); espFruitRow.LayoutOrder = 3
-    end
+            local bossHeader = new("TextLabel",{Parent=scroll, Size=UDim2.new(1,-28,0,20), BackgroundTransparency=1, Font=Enum.Font.GothamBold, Text="Boss Selector (scans workspace)", TextColor3=Color3.fromRGB(200,220,255)})
+            bossHeader.LayoutOrder = 1
 
-    local function populateRaidFruta()
-        clearRight()
-        local scroll = new("ScrollingFrame", {Parent = rightCol, Size = UDim2.new(1,-24,1,-24), Position = UDim2.new(0,12,0,12), BackgroundTransparency = 1, ScrollBarThickness = 8, AutomaticCanvasSize = Enum.AutomaticSize.Y})
-        new("UIListLayout", {Parent = scroll, Padding = UDim.new(0,12), SortOrder = Enum.SortOrder.LayoutOrder})
-
-        local randRow = new("Frame", {Parent = scroll, Size = UDim2.new(1,-28,0,64), BackgroundTransparency = 1}); randRow.LayoutOrder = 1
-        new("TextLabel", {Parent = randRow, Position = UDim2.new(0,12,0,0), Size = UDim2.new(0.66,0,1,0), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, Text = "RANDOM FRUITS (UI-only)", TextColor3 = Color3.fromRGB(230,230,230), TextXAlignment = Enum.TextXAlignment.Left})
-        local randToggle = new("TextButton", {Parent = randRow, Size = IS_MOBILE and UDim2.new(0,86,0,40) or UDim2.new(0.26,0,0,34), Position = UDim2.new(1,-(IS_MOBILE and 96 or 12) - 86,0,10), BackgroundColor3 = Color3.fromRGB(60,64,70), Text = "OFF", Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(240,240,240)})
-        new("UICorner", {Parent = randToggle, CornerRadius = UDim.new(0,8)})
-        randToggle.MouseButton1Click:Connect(function()
-            local on = randToggle.Text ~= "ON"
-            randToggle.Text = on and "ON" or "OFF"
-            randToggle.BackgroundColor3 = on and Color3.fromRGB(12,180,100) or Color3.fromRGB(60,64,70)
-            JLHubClient:RequestAction("RANDOM_FRUITS", on)
-        end)
-
-        local buyRow = createToggleRow(scroll, "Raid_AutoBuyChip", "AUTO BUY CHIP (simulado)", function(state) JLHubClient:RequestAction("AUTO_BUY_CHIP", state) end); buyRow.LayoutOrder = 5
-        local autoRaidRow = createToggleRow(scroll, "Raid_AutoRaid", "AUTO RAID (simulado)", function(state) JLHubClient:RequestAction("AUTO_RAID", state) end); autoRaidRow.LayoutOrder = 6
-        local awkRow = createToggleRow(scroll, "Raid_AutoAwk", "AUTO AWK (simulado)", function(state) JLHubClient:RequestAction("AUTO_AWK", state) end); awkRow.LayoutOrder = 7
-    end
-
-    local function populateSettings()
-        clearRight()
-        local scroll = new("ScrollingFrame", {Parent = rightCol, Size = UDim2.new(1,-24,1,-24), Position = UDim2.new(0,12,0,12), BackgroundTransparency = 1, ScrollBarThickness = 8, AutomaticCanvasSize = Enum.AutomaticSize.Y})
-        new("UIListLayout", {Parent = scroll, Padding = UDim.new(0,12), SortOrder = Enum.SortOrder.LayoutOrder})
-
-        -- Speed slider up to 350 -> send SET_SPEED
-        local row = new("Frame", {Parent = scroll, Size = UDim2.new(1,-28,0,80), BackgroundTransparency = 1}); row.LayoutOrder = 1
-        new("TextLabel", {Parent = row, Position = UDim2.new(0,12,0,0), Size = UDim2.new(0.5,0,0,20), BackgroundTransparency = 1, Font = Enum.Font.Gotham, Text = "Velocidade (max 350)", TextColor3 = Color3.fromRGB(230,230,230), TextXAlignment = Enum.TextXAlignment.Left})
-        local sliderOuter = new("Frame", {Parent = row, Position = UDim2.new(0,12,0,28), Size = UDim2.new(1,-36,0,24), BackgroundColor3 = Color3.fromRGB(30,30,35)})
-        new("UICorner", {Parent = sliderOuter, CornerRadius = UDim.new(0,6)})
-        local sliderInner = new("Frame", {Parent = sliderOuter, Size = UDim2.new(0,0,1,0), BackgroundColor3 = Color3.fromRGB(120,200,255)})
-        new("UICorner", {Parent = sliderInner, CornerRadius = UDim.new(0,6)})
-        local valLabel = new("TextLabel", {Parent = row, Position = UDim2.new(1,-88,0,0), Size = UDim2.new(0,80,0,20), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(200,220,255)})
-        local speed = LocalPlayer:GetAttribute("JL_Settings_Speed") or 16
-        speed = clamp(speed, 0, 350)
-        valLabel.Text = tostring(math.floor(speed))
-        sliderInner.Size = UDim2.new(speed/350,0,1,0)
-        local dragging = false
-        sliderOuter.InputBegan:Connect(function(input) if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dragging = true end end)
-        UIS.InputEnded:Connect(function(input) if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dragging = false end end)
-        UIS.InputChanged:Connect(function(input)
-            if not dragging then return end
-            if input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch then
-                local absX = input.Position.X
-                local left = sliderOuter.AbsolutePosition.X
-                local w = sliderOuter.AbsoluteSize.X
-                local rel = clamp(absX - left, 0, w)
-                local percent = rel / w
-                speed = math.floor(percent * 350)
-                sliderInner.Size = UDim2.new(percent,0,1,0)
-                valLabel.Text = tostring(speed)
-                pcall(function() LocalPlayer:SetAttribute("JL_Settings_Speed", speed) end)
-                -- send to server (apply live)
-                JLHubClient:RequestAction("SET_SPEED", true, { speed = speed })
-            end
-        end)
-
-        -- Disable speed button
-        local disableSpeedBtn = new("TextButton", {Parent = scroll, Size = UDim2.new(1,-28,0,40), BackgroundColor3 = Color3.fromRGB(80,80,90), Font = Enum.Font.GothamBold, Text = "Desativar Speed (server)", TextColor3 = Color3.fromRGB(240,240,240)})
-        new("UICorner", {Parent = disableSpeedBtn, CornerRadius = UDim.new(0,8)})
-        disableSpeedBtn.LayoutOrder = 3
-        disableSpeedBtn.MouseButton1Click:Connect(function()
-            JLHubClient:RequestAction("SET_SPEED", false)
-        end)
-
-        -- Teleport dropdown example (list islands from workspace.Islands)
-        local islandsParent = workspace:FindFirstChild("Islands")
-        if islandsParent then
-            local label = new("TextLabel", {Parent = scroll, Size = UDim2.new(1,-28,0,20), BackgroundTransparency = 1, Font = Enum.Font.Gotham, Text = "Teleport para ilhas (server-authorized)", TextColor3 = Color3.fromRGB(200,220,255)}); label.LayoutOrder = 4
-            for _,island in ipairs(islandsParent:GetChildren()) do
-                if island:IsA("Model") or island:IsA("Folder") or island:IsA("BasePart") then
-                    local nameBtn = new("TextButton", {Parent = scroll, Size = UDim2.new(1,-28,0,36), BackgroundColor3 = Color3.fromRGB(50,60,80), Font = Enum.Font.GothamBold, Text = tostring(island.Name), TextColor3 = Color3.fromRGB(240,240,240)}); nameBtn.LayoutOrder = 5
-                    new("UICorner", {Parent = nameBtn, CornerRadius = UDim.new(0,8)})
-                    nameBtn.MouseButton1Click:Connect(function()
-                        JLHubClient:RequestAction("TELEPORT", true, { island = island.Name })
-                    end)
+            -- dynamic boss list: scan workspace.Enemies and collect models flagged Boss attribute or with "Boss" in name
+            local enemyFolder = Workspace:FindFirstChild(ENEMY_FOLDER_NAME)
+            local bosses = {}
+            if enemyFolder then
+                for _,m in ipairs(enemyFolder:GetChildren()) do
+                    if m:IsA("Model") then
+                        local isBoss = m:GetAttribute("Boss") == true
+                        if not isBoss then
+                            local low = tostring(m.Name):lower()
+                            if low:find("boss") or low:find("king") or low:find("overlord") or low:find("admiral") or low:find("captain") then isBoss = true end
+                        end
+                        if isBoss then table.insert(bosses, m.Name) end
+                    end
                 end
             end
-        else
-            new("TextLabel", {Parent = scroll, Size = UDim2.new(1,-28,0,20), BackgroundTransparency = 1, Font = Enum.Font.Gotham, Text = "Nenhuma pasta 'Islands' em Workspace.", TextColor3 = Color3.fromRGB(200,120,120)}).LayoutOrder = 4
+            if #bosses == 0 then
+                -- fallback: show names from combined arrays (if your workspace isn't populated)
+                local fallback = { unpack(BOSS_FIRST_SEA); unpack(BOSS_SECOND_SEA); unpack(BOSS_THIRD_SEA) }
+                for _,name in ipairs(fallback) do
+                    local b = new("TextButton",{Parent=scroll, Size=UDim2.new(1,-28,0,28), BackgroundColor3=Color3.fromRGB(55,60,75), Font=Enum.Font.Gotham, Text=name, TextColor3=Color3.fromRGB(240,240,240)})
+                    new("UICorner",{Parent=b, CornerRadius=UDim.new(0,6)})
+                    b.LayoutOrder = 2
+                    b.MouseButton1Click:Connect(function() pcall(function() LocalPlayer:SetAttribute("JL_SelectedBoss", name) end); notify("Selected boss: "..name) end)
+                end
+            else
+                for _,name in ipairs(bosses) do
+                    local b = new("TextButton",{Parent=scroll, Size=UDim2.new(1,-28,0,28), BackgroundColor3=Color3.fromRGB(55,60,75), Font=Enum.Font.Gotham, Text=name, TextColor3=Color3.fromRGB(240,240,240)})
+                    new("UICorner",{Parent=b, CornerRadius=UDim.new(0,6)})
+                    b.LayoutOrder = 2
+                    b.MouseButton1Click:Connect(function() pcall(function() LocalPlayer:SetAttribute("JL_SelectedBoss", name) end); notify("Selected boss: "..name) end)
+                end
+            end
+
+            createToggleRow(scroll, "AUTO BOSS (selected)", function(state)
+                local chosen = LocalPlayer:GetAttribute("JL_SelectedBoss")
+                if not chosen then notify("Choose a boss first") end
+                JLHubClient:RequestAction("AUTO_FARM_BOSS", state, { boss = chosen or "", all = false })
+            end).LayoutOrder = 300
+
+            createToggleRow(scroll, "AUTO FARM ALL BOSSES", function(state)
+                JLHubClient:RequestAction("AUTO_FARM_BOSS", state, { boss = "", all = true })
+            end).LayoutOrder = 310
+
+            createToggleRow(scroll, "RANDOM FRUITS (auto spin)", function(state) JLHubClient:RequestAction("RANDOM_FRUITS", state) end).LayoutOrder = 320
+            createToggleRow(scroll, "AUTO STORE FRUIT", function(state) JLHubClient:RequestAction("AUTO_STORE_FRUIT", state) end).LayoutOrder = 330
+            createToggleRow(scroll, "AUTO RAID (auto run/kill)", function(state) JLHubClient:RequestAction("AUTO_RAID", state) end).LayoutOrder = 340
+            createToggleRow(scroll, "AUTO BUY CHIP", function(state) JLHubClient:RequestAction("AUTO_BUY_CHIP", state) end).LayoutOrder = 350
+
+            -- method selector & auto farm toggle
+            local methodOptions = {"Combat","Sword","Gun","Fruits"}
+            local selFrame = new("Frame",{Parent=scroll, Size=UDim2.new(1,-28,0,44), BackgroundTransparency=1}); selFrame.LayoutOrder = 360
+            new("TextLabel",{Parent=selFrame, Position=UDim2.new(0,12,0,0), Size=UDim2.new(0.5,0,1,0), BackgroundTransparency=1, Font=Enum.Font.Gotham, Text="Auto Farm method:", TextColor3=Color3.fromRGB(220,220,220)})
+            for i,opt in ipairs(methodOptions) do
+                local btn = new("TextButton",{Parent=selFrame, Size=UDim2.new(0,84,0,34), Position=UDim2.new(0.5, (i-1)*92, 0, 5), BackgroundColor3=Color3.fromRGB(40,40,50), Text=opt, Font=Enum.Font.GothamBold, TextColor3=Color3.fromRGB(240,240,240)})
+                new("UICorner",{Parent=btn, CornerRadius=UDim.new(0,8)})
+                btn.MouseButton1Click:Connect(function() pcall(function() LocalPlayer:SetAttribute("JL_AutoFarm_Method", opt) end); notify("Method set: "..opt) end)
+            end
+
+            createToggleRow(scroll, "AUTO FARM (normal)", function(state)
+                local method = LocalPlayer:GetAttribute("JL_AutoFarm_Method") or "Combat"
+                JLHubClient:RequestAction("AUTO_FARM", state, { method = method })
+            end).LayoutOrder = 370
+
+            -- Teleport quick lists: scans workspace.Islands for Models; fallback to example arrays if missing
+            local tpLabel = new("TextLabel",{Parent=scroll, Size=UDim2.new(1,-28,0,20), BackgroundTransparency=1, Font=Enum.Font.Gotham, Text="Teleports (scans workspace.Islands)", TextColor3=Color3.fromRGB(200,220,255)}); tpLabel.LayoutOrder = 380
+            local islandsParent = Workspace:FindFirstChild(ISLANDS_FOLDER)
+            if islandsParent then
+                for _,island in ipairs(islandsParent:GetChildren()) do
+                    if island:IsA("Model") or island:IsA("Folder") or island:IsA("BasePart") then
+                        local b = new("TextButton",{Parent=scroll, Size=UDim2.new(1,-28,0,28), BackgroundColor3=Color3.fromRGB(50,60,80), Font=Enum.Font.GothamBold, Text=tostring(island.Name), TextColor3=Color3.fromRGB(240,240,240)})
+                        new("UICorner",{Parent=b, CornerRadius=UDim.new(0,6)}) b.LayoutOrder = 381
+                        b.MouseButton1Click:Connect(function() JLHubClient:RequestAction("TELEPORT", true, { island = island.Name }) end)
+                    end
+                end
+            else
+                -- fallback lists (you can replace with official names by creating Models with these exact names in workspace.Islands)
+                local fallbackFirst = BLOX_ISLANDS_FIRST
+                for _,name in ipairs(fallbackFirst) do
+                    local b = new("TextButton",{Parent=scroll, Size=UDim2.new(1,-28,0,28), BackgroundColor3=Color3.fromRGB(50,60,80), Font=Enum.Font.GothamBold, Text=name, TextColor3=Color3.fromRGB(240,240,240)})
+                    new("UICorner",{Parent=b, CornerRadius=UDim.new(0,6)}) b.LayoutOrder = 381
+                    b.MouseButton1Click:Connect(function() JLHubClient:RequestAction("TELEPORT", true, { island = name }) end)
+                end
+            end
         end
+
+        -- left menu
+        for i,cat in ipairs(categories) do
+            local btn = new("TextButton",{Parent=leftCol, Size=UDim2.new(1,-18,0, IS_MOBILE and 56 or 48), Position=UDim2.new(0,9,0,0), BackgroundColor3=(i==1) and Color3.fromRGB(35,72,120) or Color3.fromRGB(18,20,24), Font=Enum.Font.GothamBold, Text=cat, TextColor3=Color3.fromRGB(220,230,255)})
+            new("UICorner",{Parent=btn, CornerRadius=UDim.new(0,8)}) btn.LayoutOrder = i
+            btn.MouseButton1Click:Connect(function()
+                for _,c in ipairs(leftCol:GetChildren()) do if c:IsA("TextButton") then c.BackgroundColor3 = Color3.fromRGB(18,20,24) end end
+                btn.BackgroundColor3 = Color3.fromRGB(35,72,120)
+                if cat == "Main" then buildMainHub() else notify("Settings tab not implemented in this simplified UI.") end
+            end)
+        end
+
+        buildMainHub() -- initially open
     end
 
-    -- Create left category buttons
-    for i,cat in ipairs(categories) do
-        local btn = new("TextButton", {Parent = leftCol, Size = UDim2.new(1,-18,0, IS_MOBILE and 56 or 48), Position = UDim2.new(0,9,0,0), BackgroundColor3 = (i==1) and Color3.fromRGB(35,72,120) or Color3.fromRGB(18,20,24), Font = Enum.Font.GothamBold, Text = cat, TextColor3 = Color3.fromRGB(220,230,255)})
-        new("UICorner", {Parent = btn, CornerRadius = UDim.new(0,8)})
-        btn.LayoutOrder = i
-        btn.MouseButton1Click:Connect(function()
-            for _,c in ipairs(leftCol:GetChildren()) do if c:IsA("TextButton") then c.BackgroundColor3 = Color3.fromRGB(18,20,24) end end
-            btn.BackgroundColor3 = Color3.fromRGB(35,72,120)
-            if cat == "Main" then populateMain() elseif cat == "Player" then populatePlayer() elseif cat == "Raid|Fruta" then populateRaidFruta() elseif cat == "Settings" then populateSettings() end
-        end)
-    end
+    local floatSG, floatBtn = buildFloatButton()
+    local keyGui = buildKeyGui(function() buildMainHub() end)
+    floatBtn.MouseButton1Click:Connect(function()
+        local mainGui = CoreGui:FindFirstChild("JLHubMain")
+        if mainGui then mainGui.Enabled = not mainGui.Enabled else local kg = CoreGui:FindFirstChild("JLHubKey"); if not kg then keyGui = buildKeyGui(function() buildMainHub() end) end end
+    end)
 
-    populateMain()
-    squareBtn.MouseButton1Click:Connect(function() sg.Enabled = not sg.Enabled end)
-    UIS.InputBegan:Connect(function(input, gp) if gp then return end if input.KeyCode == Enum.KeyCode.Escape then sg.Enabled = not sg.Enabled end end)
-    notify("JL Hub carregado (cliente).")
+    return
 end
 
--- Entry
-local floatSG, floatBtn = buildFloatButton()
-local keyGui = buildKeyGui(function() buildMainHub() end)
+-- SERVER CODE
+-- Ensure RemoteEvents
+local requestEvent = ensureRemoteEvent(REQUEST_EVENT_NAME)
+local responseEvent = ensureRemoteEvent(RESPONSE_EVENT_NAME)
 
-floatBtn.MouseButton1Click:Connect(function()
-    local mainGui = CoreGui:FindFirstChild("JLHubMain")
-    if mainGui then
-        mainGui.Enabled = not mainGui.Enabled
-        notify(mainGui.Enabled and "JL Hub visível" or "JL Hub escondido")
-    else
-        local kg = CoreGui:FindFirstChild("JLHubKey")
-        if not kg then keyGui = buildKeyGui(function() buildMainHub() end) end
+-- Admin list: edit in server copy if desired
+local AdminUserIds = {
+    -- add your UserId for admin-only actions, e.g. 12345678,
+}
+
+local function isAdmin(player)
+    if not player then return false end
+    for _,id in ipairs(AdminUserIds) do if player.UserId == id then return true end end
+    if game.CreatorType == Enum.CreatorType.User and game.CreatorId == player.UserId then return true end
+    return false
+end
+
+-- Utility server helpers
+local function getCharRoot(player)
+    local ch = player.Character
+    if ch then return ch:FindFirstChild("HumanoidRootPart") end
+    return nil
+end
+
+local function isValidNpcModel(model)
+    if not model or not model:IsA("Model") then return false end
+    local h = model:FindFirstChildWhichIsA("Humanoid")
+    local hrp = model:FindFirstChild("HumanoidRootPart")
+    if h and hrp and h.Health and h.Health > NPC_MIN_HEALTH_THRESHOLD then return true end
+    return false
+end
+
+local enemyParent = Workspace:FindFirstChild(ENEMY_FOLDER_NAME) or Workspace
+local missionGiversParent = Workspace:FindFirstChild(MISSION_GIVERS_FOLDER)
+local islandsParent = Workspace:FindFirstChild(ISLANDS_FOLDER)
+local raidParent = Workspace:FindFirstChild(RAID_FOLDER)
+
+-- Simple mission assignment (nearest mission giver)
+local DEFAULT_MISSION_KILLS = 10
+local function assignMissionToPlayer(player)
+    if player:GetAttribute("JL_Mission_Assigned") then return false, "Already assigned" end
+    if not missionGiversParent then return false, "No mission givers" end
+    local root = getCharRoot(player); if not root then return false, "No character" end
+    local best, bestDist
+    for _,mg in ipairs(missionGiversParent:GetChildren()) do
+        if mg:IsA("Model") then
+            local hrp = mg:FindFirstChild("HumanoidRootPart") or mg:FindFirstChildWhichIsA("BasePart")
+            if hrp then
+                local d = (hrp.Position - root.Position).Magnitude
+                if not best or d < bestDist then best = mg; bestDist = d end
+            end
+        end
     end
+    if not best then return false, "No mission giver found" end
+    local targetName = best:GetAttribute("TargetName")
+    local required = tonumber(best:GetAttribute("RequiredKills")) or DEFAULT_MISSION_KILLS
+    player:SetAttribute("JL_Mission_Assigned", true)
+    player:SetAttribute("JL_Mission_TargetName", targetName)
+    player:SetAttribute("JL_Mission_KillsRequired", required)
+    player:SetAttribute("JL_Mission_KillsSoFar", 0)
+    return true, ("Assigned: %s x%d"):format(tostring(targetName), required)
+end
+
+-- Implementations: start/stop for features
+-- AUTO_FARM
+local activeAutoFarm = {}
+local function startAutoFarm(player, method)
+    if activeAutoFarm[player] then return end
+    method = tostring(method or "Combat")
+    activeAutoFarm[player] = { running = true, method = method, thread = nil }
+    local co = coroutine.create(function()
+        while activeAutoFarm[player] and activeAutoFarm[player].running do
+            local root = getCharRoot(player)
+            if root then
+                if not player:GetAttribute("JL_Mission_Assigned") then
+                    local ok,msg = assignMissionToPlayer(player)
+                    if ok then responseEvent:FireClient(player, { action="AUTO_FARM_ASSIGN", success=true, message = "Mission assigned: "..tostring(player:GetAttribute("JL_Mission_TargetName") or "any") }) end
+                end
+                local targetName = player:GetAttribute("JL_Mission_TargetName")
+                local killsRequired = player:GetAttribute("JL_Mission_KillsRequired") or DEFAULT_MISSION_KILLS
+                local killsSoFar = player:GetAttribute("JL_Mission_KillsSoFar") or 0
+                local killedThisTick = 0
+                for _,npc in ipairs(enemyParent:GetChildren()) do
+                    if killedThisTick >= MAX_KILLS_PER_TICK then break end
+                    if isValidNpcModel(npc) then
+                        local hrp = npc:FindFirstChild("HumanoidRootPart")
+                        if hrp and (hrp.Position - root.Position).Magnitude <= KILL_RADIUS then
+                            local matches = false
+                            if not targetName then matches = true else
+                                if tostring(npc.Name):lower():find(tostring(targetName):lower()) then matches = true end
+                                local et = npc:GetAttribute("EnemyType")
+                                if not matches and et and tostring(et):lower():find(tostring(targetName):lower()) then matches = true end
+                            end
+                            if matches then
+                                pcall(function() npc:BreakJoints() end) -- kill
+                                killedThisTick = killedThisTick + 1
+                                killsSoFar = killsSoFar + 1
+                                player:SetAttribute("JL_Mission_KillsSoFar", killsSoFar)
+                                responseEvent:FireClient(player, { action="AUTO_FARM_KILL", success=true, message = ("[%s] Killed %s (%d/%d)"):format(method, npc.Name, killsSoFar, killsRequired) })
+                                if killsSoFar >= killsRequired then
+                                    player:SetAttribute("JL_Mission_Assigned", false); player:SetAttribute("JL_Mission_TargetName", nil); player:SetAttribute("JL_Mission_KillsRequired", nil); player:SetAttribute("JL_Mission_KillsSoFar", nil)
+                                    responseEvent:FireClient(player, { action="AUTO_FARM_COMPLETE", success=true, message = "Mission complete (AUTO_FARM)." })
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            local elapsed = 0
+            while elapsed < KILL_TICK do
+                if not (activeAutoFarm[player] and activeAutoFarm[player].running) then break end
+                local dt = RunService.Heartbeat:Wait(); elapsed = elapsed + dt
+            end
+        end
+        activeAutoFarm[player] = nil
+    end)
+    activeAutoFarm[player].thread = co
+    coroutine.resume(co)
+end
+local function stopAutoFarm(player) if activeAutoFarm[player] then activeAutoFarm[player].running = false; activeAutoFarm[player] = nil end end
+
+-- AUTO_FARM_BOSS
+local activeAutoFarmBoss = {}
+local function bossNameMatches(model, bossName)
+    if not model then return false end
+    if bossName == "" or bossName == nil then return false end
+    local lower = tostring(model.Name):lower()
+    if lower:find(tostring(bossName):lower()) then return true end
+    local bt = model:GetAttribute("Boss")
+    if bt == true then
+        local t = model:GetAttribute("BossType") or model:GetAttribute("EnemyType")
+        if t and tostring(t):lower():find(tostring(bossName):lower()) then return true end
+        if not bossName or bossName == "" then return true end
+    end
+    local et = model:GetAttribute("EnemyType")
+    if et and tostring(et):lower():find(tostring(bossName):lower()) then return true end
+    return false
+end
+
+local function startAutoFarmBoss(player, bossName, all)
+    if activeAutoFarmBoss[player] then return end
+    activeAutoFarmBoss[player] = { running = true, bossName = bossName, all = all, thread = nil }
+    local co = coroutine.create(function()
+        while activeAutoFarmBoss[player] and activeAutoFarmBoss[player].running do
+            local root = getCharRoot(player)
+            if root then
+                local killedThisTick = 0
+                for _,npc in ipairs(enemyParent:GetChildren()) do
+                    if killedThisTick >= MAX_KILLS_PER_TICK then break end
+                    if isValidNpcModel(npc) then
+                        local hrp = npc:FindFirstChild("HumanoidRootPart")
+                        if hrp and (hrp.Position - root.Position).Magnitude <= KILL_RADIUS then
+                            local isBoss = false
+                            if npc:GetAttribute("Boss") == true then isBoss = true end
+                            if all then
+                                if not isBoss then
+                                    local nm = tostring(npc.Name):lower()
+                                    if nm:find("boss") or npc:GetAttribute("EnemyType") == "Boss" then isBoss = true end
+                                end
+                            else
+                                if bossNameMatches(npc, bossName) then isBoss = true end
+                            end
+                            if isBoss then
+                                pcall(function() npc:BreakJoints() end)
+                                killedThisTick = killedThisTick + 1
+                                responseEvent:FireClient(player, { action="AUTO_FARM_BOSS_KILL", success=true, message = ("Killed boss: %s"):format(npc.Name) })
+                            end
+                        end
+                    end
+                end
+            end
+            local elapsed=0
+            while elapsed < KILL_TICK do
+                if not (activeAutoFarmBoss[player] and activeAutoFarmBoss[player].running) then break end
+                local dt = RunService.Heartbeat:Wait(); elapsed = elapsed + dt
+            end
+        end
+        activeAutoFarmBoss[player] = nil
+    end)
+    activeAutoFarmBoss[player].thread = co
+    coroutine.resume(co)
+end
+local function stopAutoFarmBoss(player) if activeAutoFarmBoss[player] then activeAutoFarmBoss[player].running = false; activeAutoFarmBoss[player] = nil end end
+
+-- RANDOM FRUITS (simulation)
+local activeRandomFruits = {}
+local fruitsList = { "Gomu", "Suke", "Bara", "Mera", "Gura", "Yami", "Ope", "Ito", "Hie", "Soru", "Magu", "Tori", "Doru" }
+local function startRandomFruits(player)
+    if activeRandomFruits[player] then return end
+    activeRandomFruits[player] = { running = true, thread = nil }
+    local co = coroutine.create(function()
+        while activeRandomFruits[player] and activeRandomFruits[player].running do
+            local pick = fruitsList[math.random(1,#fruitsList)]
+            -- GAME-SPECIFIC: integrate with your actual spin/purchase logic here
+            player:SetAttribute("JL_LastSpunFruit", pick)
+            responseEvent:FireClient(player, { action="RANDOM_FRUITS_PICK", success=true, message = "Random Fruits: "..tostring(pick) })
+            local elapsed=0
+            while elapsed < RANDOM_FRUIT_INTERVAL do
+                if not (activeRandomFruits[player] and activeRandomFruits[player].running) then break end
+                local dt = RunService.Heartbeat:Wait(); elapsed = elapsed + dt
+            end
+        end
+        activeRandomFruits[player] = nil
+    end)
+    activeRandomFruits[player].thread = co
+    coroutine.resume(co)
+end
+local function stopRandomFruits(player) if activeRandomFruits[player] then activeRandomFruits[player].running = false; activeRandomFruits[player] = nil end end
+
+-- AUTO_STORE_FRUIT (placeholder: moves an attribute count)
+local activeAutoStore = {}
+local function startAutoStoreFruit(player)
+    if activeAutoStore[player] then return end
+    activeAutoStore[player] = { running = true, thread = nil }
+    local co = coroutine.create(function()
+        while activeAutoStore[player] and activeAutoStore[player].running do
+            local inv = player:GetAttribute("JL_Inventory_Fruits") or 0
+            if inv > 0 then
+                local store = player:GetAttribute("JL_Stored_Fruits") or 0
+                player:SetAttribute("JL_Inventory_Fruits", inv - 1)
+                player:SetAttribute("JL_Stored_Fruits", store + 1)
+                responseEvent:FireClient(player, { action="AUTO_STORE_FRUIT", success=true, message = "Stored 1 fruit (placeholder)" })
+            else
+                responseEvent:FireClient(player, { action="AUTO_STORE_FRUIT", success=false, message = "No fruits to store" })
+            end
+            local elapsed=0
+            while elapsed < AUTO_STORE_INTERVAL do
+                if not (activeAutoStore[player] and activeAutoStore[player].running) then break end
+                local dt = RunService.Heartbeat:Wait(); elapsed = elapsed + dt
+            end
+        end
+        activeAutoStore[player] = nil
+    end)
+    activeAutoStore[player].thread = co
+    coroutine.resume(co)
+end
+local function stopAutoStoreFruit(player) if activeAutoStore[player] then activeAutoStore[player].running = false; activeAutoStore[player] = nil end end
+
+-- AUTO_RAID (simple template)
+local activeAutoRaid = {}
+local function startAutoRaid(player)
+    if activeAutoRaid[player] then return end
+    if not raidParent then responseEvent:FireClient(player, { action="AUTO_RAID", success=false, message="No raid areas in workspace" }); return end
+    activeAutoRaid[player] = { running = true, thread = nil }
+    local co = coroutine.create(function()
+        local areas = raidParent:GetChildren()
+        local idx = 1
+        while activeAutoRaid[player] and activeAutoRaid[player].running do
+            local area = areas[idx]
+            if area then
+                local spawnPart = area.PrimaryPart or area:FindFirstChildWhichIsA("BasePart")
+                if spawnPart and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    pcall(function() player.Character.HumanoidRootPart.CFrame = spawnPart.CFrame + Vector3.new(0,5,0) end)
+                end
+                for _,obj in ipairs(area:GetDescendants()) do
+                    if obj:IsA("Model") and isValidNpcModel(obj) then
+                        pcall(function() killNpc(obj) end)
+                        responseEvent:FireClient(player, { action="AUTO_RAID_KILL", success=true, message = "AutoRaid killed: "..tostring(obj.Name) })
+                    end
+                end
+                idx = idx + 1
+                if idx > #areas then idx = 1 end
+            else
+                responseEvent:FireClient(player, { action="AUTO_RAID", success=false, message="No raid areas found" })
+            end
+            local elapsed=0
+            while elapsed < AUTO_RAID_STEP do
+                if not (activeAutoRaid[player] and activeAutoRaid[player].running) then break end
+                local dt = RunService.Heartbeat:Wait(); elapsed = elapsed + dt
+            end
+        end
+        activeAutoRaid[player] = nil
+    end)
+    activeAutoRaid[player].thread = co
+    coroutine.resume(co)
+end
+local function stopAutoRaid(player) if activeAutoRaid[player] then activeAutoRaid[player].running = false; activeAutoRaid[player] = nil end end
+
+-- AUTO BUY CHIP (placeholder)
+local activeAutoBuyChip = {}
+local function startAutoBuyChip(player)
+    if activeAutoBuyChip[player] then return end
+    activeAutoBuyChip[player] = { running = true, thread = nil }
+    local co = coroutine.create(function()
+        while activeAutoBuyChip[player] and activeAutoBuyChip[player].running do
+            local commons = player:GetAttribute("JL_CommonFruits") or 0
+            if commons >= 5 then
+                player:SetAttribute("JL_CommonFruits", commons - 5)
+                local chips = player:GetAttribute("JL_RaidChips") or 0
+                player:SetAttribute("JL_RaidChips", chips + 1)
+                responseEvent:FireClient(player, { action="AUTO_BUY_CHIP", success=true, message = "Bought 1 chip (placeholder)" })
+            else
+                responseEvent:FireClient(player, { action="AUTO_BUY_CHIP", success=false, message = "Not enough common fruits" })
+            end
+            local elapsed=0
+            while elapsed < AUTO_BUY_INTERVAL do
+                if not (activeAutoBuyChip[player] and activeAutoBuyChip[player].running) then break end
+                local dt = RunService.Heartbeat:Wait(); elapsed = elapsed + dt
+            end
+        end
+        activeAutoBuyChip[player] = nil
+    end)
+    activeAutoBuyChip[player].thread = co
+    coroutine.resume(co)
+end
+local function stopAutoBuyChip(player) if activeAutoBuyChip[player] then activeAutoBuyChip[player].running = false; activeAutoBuyChip[player] = nil end end
+
+-- AUTO_KILL (admin-only)
+local activeAutoKill = {}
+local function startAutoKill(player)
+    if activeAutoKill[player] then return end
+    if not isAdmin(player) then responseEvent:FireClient(player, { action="AUTO_KILL", success=false, message="Admin required" }); return end
+    activeAutoKill[player] = { running = true, thread = nil }
+    local co = coroutine.create(function()
+        while activeAutoKill[player] and activeAutoKill[player].running do
+            local root = getCharRoot(player)
+            if root then
+                local killedThisTick = 0
+                for _,npc in ipairs(enemyParent:GetChildren()) do
+                    if killedThisTick >= MAX_KILLS_PER_TICK then break end
+                    if isValidNpcModel(npc) then
+                        local hrp = npc:FindFirstChild("HumanoidRootPart")
+                        if hrp and (hrp.Position - root.Position).Magnitude <= KILL_RADIUS then
+                            pcall(function() npc:BreakJoints() end)
+                            killedThisTick = killedThisTick + 1
+                            responseEvent:FireClient(player, { action="AUTO_KILL_KILL", success=true, message = "AutoKill: killed "..tostring(npc.Name) })
+                        end
+                    end
+                end
+            end
+            local elapsed=0
+            while elapsed < KILL_TICK do
+                if not (activeAutoKill[player] and activeAutoKill[player].running) then break end
+                local dt = RunService.Heartbeat:Wait(); elapsed = elapsed + dt
+            end
+        end
+        activeAutoKill[player] = nil
+    end)
+    activeAutoKill[player].thread = co
+    coroutine.resume(co)
+end
+local function stopAutoKill(player) if activeAutoKill[player] then activeAutoKill[player].running = false; activeAutoKill[player] = nil end end
+
+-- AUTO_MASTERY
+local activeAutoMastery = {}
+local function startAutoMastery(player, target)
+    if activeAutoMastery[player] then return end
+    activeAutoMastery[player] = { running = true, target = target, thread = nil }
+    local co = coroutine.create(function()
+        while activeAutoMastery[player] and activeAutoMastery[player].running do
+            local keyLevel = ("JL_Mastery_Level_%s"):format(tostring(target))
+            local keyXp = ("JL_Mastery_XP_%s"):format(tostring(target))
+            local level = player:GetAttribute(keyLevel) or 0
+            local xp = player:GetAttribute(keyXp) or 0
+            xp = xp + MASTERY_XP_PER_TICK
+            while xp >= MASTERY_XP_TO_LEVEL do
+                xp = xp - MASTERY_XP_TO_LEVEL
+                level = math.min(level + 1, MASTERY_MAX_LEVEL)
+                player:SetAttribute(keyLevel, level)
+                responseEvent:FireClient(player, { action="MASTERY_LEVEL_UP", success=true, message = ("Mastery %s +1 -> %d"):format(target, level) })
+            end
+            player:SetAttribute(keyXp, xp)
+            responseEvent:FireClient(player, { action="MASTERY_PROGRESS", success=true, message = ("Mastery %s XP: %d/%d"):format(target, xp, MASTERY_XP_TO_LEVEL) })
+            local elapsed=0
+            while elapsed < MASTERY_TICK do
+                if not (activeAutoMastery[player] and activeAutoMastery[player].running) then break end
+                local dt = RunService.Heartbeat:Wait(); elapsed = elapsed + dt
+            end
+        end
+        activeAutoMastery[player] = nil
+    end)
+    activeAutoMastery[player].thread = co
+    coroutine.resume(co)
+end
+local function stopAutoMastery(player) if activeAutoMastery[player] then activeAutoMastery[player].running = false; activeAutoMastery[player] = nil end end
+
+-- SPEED control
+local speedState = {}
+local function applySpeedToCharacter(player, speed)
+    local ch = player.Character; if not ch then return end
+    local humanoid = ch:FindFirstChildWhichIsA("Humanoid")
+    if humanoid then
+        local orig = humanoid.WalkSpeed
+        speedState[player] = speedState[player] or {}
+        if not speedState[player].applied then speedState[player].orig = orig end
+        humanoid.WalkSpeed = speed
+        speedState[player].applied = true; speedState[player].value = speed
+    end
+end
+local function clearSpeedOnCharacter(player)
+    local ch = player.Character
+    if ch then
+        local humanoid = ch:FindFirstChildWhichIsA("Humanoid")
+        if humanoid and speedState[player] and speedState[player].orig then humanoid.WalkSpeed = speedState[player].orig or DEFAULT_WALKSPEED end
+    end
+end
+local function setPlayerSpeed(player, enabled, speed)
+    if enabled then
+        local s = tonumber(speed) or DEFAULT_WALKSPEED
+        s = math.clamp(s, 0, SPEED_MAX)
+        applySpeedToCharacter(player, s)
+        player:SetAttribute("JL_Speed_Enabled", true)
+        player:SetAttribute("JL_Speed_Value", s)
+        responseEvent:FireClient(player, { action="SET_SPEED", success=true, message = ("Speed set to %d (server)"):format(s) })
+    else
+        player:SetAttribute("JL_Speed_Enabled", false)
+        player:SetAttribute("JL_Speed_Value", nil)
+        clearSpeedOnCharacter(player)
+        speedState[player] = nil
+        responseEvent:FireClient(player, { action="SET_SPEED", success=true, message = "Speed reset (server)" })
+    end
+end
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        wait(0.12)
+        if player:GetAttribute("JL_Speed_Enabled") then
+            local val = player:GetAttribute("JL_Speed_Value")
+            if val then wait(0.12); applySpeedToCharacter(player, val) end
+        end
+    end)
 end)
 
--- end of client script
+-- TELEPORT helper
+local function teleportPlayerToIsland(player, islandName)
+    if not islandName or islandName == "" then return false, "No island specified" end
+    if not islandsParent then return false, "No Islands folder in workspace" end
+    local island = islandsParent:FindFirstChild(islandName)
+    if not island then
+        for _,c in ipairs(islandsParent:GetChildren()) do if tostring(c.Name):lower() == tostring(islandName):lower() then island = c; break end end
+    end
+    if not island then return false, "Island not found: "..tostring(islandName) end
+    local tpPart = island.PrimaryPart or island:FindFirstChild("Spawn") or island:FindFirstChildWhichIsA("BasePart")
+    if not tpPart then return false, "Island has no teleport point" end
+    local ch = player.Character; if not ch then return false, "No character" end
+    local hrp = ch:FindFirstChild("HumanoidRootPart"); if not hrp then return false, "No HumanoidRootPart" end
+    pcall(function() hrp.CFrame = tpPart.CFrame + Vector3.new(0,5,0) end)
+    return true, "Teleported to "..tostring(islandName)
+end
+
+-- Request handler
+local lastRequest = {}
+requestEvent.OnServerEvent:Connect(function(player, payload)
+    if type(payload) ~= "table" or type(payload.action) ~= "string" then
+        responseEvent:FireClient(player, { action = tostring(payload and payload.action or "unknown"), success = false, message = "Invalid payload." })
+        return
+    end
+    local now = tick(); local last = lastRequest[player] or 0
+    if now - last < 0.25 then responseEvent:FireClient(player, { action = payload.action, success=false, message = "Too fast. Wait." }); return end
+    lastRequest[player] = now
+
+    local action = payload.action; local enabled = payload.enabled; local params = payload.params or {}
+
+    if action == "AUTO_FARM" then
+        local method = tostring(params.method or "Combat")
+        if enabled then startAutoFarm(player, method) else stopAutoFarm(player) end
+        responseEvent:FireClient(player, { action=action, success=true, message = ("AUTO_FARM (%s) %s"):format(method, enabled and "started" or "stopped") })
+        return
+    end
+    if action == "AUTO_FARM_BOSS" then
+        local boss = tostring(params.boss or "")
+        local all = (params.all == true)
+        if enabled then startAutoFarmBoss(player, boss, all) else stopAutoFarmBoss(player) end
+        responseEvent:FireClient(player, { action=action, success=true, message = ("AUTO_FARM_BOSS %s %s"):format(all and "ALL" or boss, enabled and "started" or "stopped") })
+        return
+    end
+    if action == "RANDOM_FRUITS" then
+        if enabled then startRandomFruits(player) else stopRandomFruits(player) end
+        responseEvent:FireClient(player, { action=action, success=true, message = "RANDOM_FRUITS "..(enabled and "started" or "stopped") })
+        return
+    end
+    if action == "AUTO_STORE_FRUIT" then
+        if enabled then startAutoStoreFruit(player) else stopAutoStoreFruit(player) end
+        responseEvent:FireClient(player, { action=action, success=true, message = "AUTO_STORE_FRUIT "..(enabled and "started" or "stopped") })
+        return
+    end
+    if action == "AUTO_RAID" then
+        if enabled then startAutoRaid(player) else stopAutoRaid(player) end
+        responseEvent:FireClient(player, { action=action, success=true, message = "AUTO_RAID "..(enabled and "started" or "stopped") })
+        return
+    end
+    if action == "AUTO_BUY_CHIP" then
+        if enabled then startAutoBuyChip(player) else stopAutoBuyChip(player) end
+        responseEvent:FireClient(player, { action=action, success=true, message = "AUTO_BUY_CHIP "..(enabled and "started" or "stopped") })
+        return
+    end
+    if action == "AUTO_MASTERY" then
+        local target = tostring(params.target or "Fruit")
+        if enabled then startAutoMastery(player, target) else stopAutoMastery(player) end
+        responseEvent:FireClient(player, { action=action, success=true, message = ("AUTO_MASTERY %s %s"):format(target, enabled and "started" or "stopped") })
+        return
+    end
+    if action == "SET_SPEED" then
+        local speed = tonumber(params.speed) or player:GetAttribute("JL_Speed_Value") or DEFAULT_WALKSPEED
+        if enabled then setPlayerSpeed(player, true, speed) else setPlayerSpeed(player, false, nil) end
+        return
+    end
+    if action == "TELEPORT" then
+        local island = tostring(params.island or params[1] or "")
+        local ok,msg = teleportPlayerToIsland(player, island)
+        responseEvent:FireClient(player, { action="TELEPORT", success = ok and true or false, message = msg or (ok and "Teleported" or "Teleport failed") })
+        return
+    end
+
+    responseEvent:FireClient(player, { action=action, success=false, message = "Unknown action: "..tostring(action) })
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    if activeAutoFarm[player] then activeAutoFarm[player] = nil end
+    if activeAutoFarmBoss[player] then activeAutoFarmBoss[player] = nil end
+    if activeRandomFruits[player] then activeRandomFruits[player] = nil end
+    if activeAutoStore[player] then activeAutoStore[player] = nil end
+    if activeAutoRaid[player] then activeAutoRaid[player] = nil end
+    if activeAutoBuyChip[player] then activeAutoBuyChip[player] = nil end
+    lastRequest[player] = nil
+end)
+
+print("[JLHubUnified] Server logic loaded. Place LocalScript copy in StarterPlayerScripts and Script copy in ServerScriptService.")
